@@ -1,7 +1,6 @@
 use miden_air::RowIndex;
-use processor::ExecutionError;
-use vm_core::PrimeField64;
-use test_utils::{build_expected_hash, build_expected_perm, expect_exec_error_matches};
+use miden_processor::{ExecutionError, ZERO};
+use miden_utils_testing::{build_expected_hash, build_expected_perm, expect_exec_error_matches};
 
 #[test]
 fn test_invalid_end_addr() {
@@ -20,8 +19,8 @@ fn test_invalid_end_addr() {
 
     expect_exec_error_matches!(
         test,
-        ExecutionError::FailedAssertion{ clk, err_code, err_msg }
-        if clk == RowIndex::from(18) && err_code == 0 && err_msg.is_none()
+        ExecutionError::FailedAssertion{ clk, err_code, err_msg , label: _, source_file: _ }
+        if clk == RowIndex::from(18) && err_code == ZERO && err_msg.is_none()
     );
 }
 
@@ -37,8 +36,8 @@ fn test_hash_empty() {
         mem_stream hperm
 
         # drop everything except the hash
-        exec.rpo::squeeze_digest movup.4 drop 
-        
+        exec.rpo::squeeze_digest movup.4 drop
+
         # truncate stack
         swapw dropw
     end
@@ -245,6 +244,67 @@ fn test_absorb_double_words_from_memory() {
 }
 
 #[test]
+fn test_hash_memory_double_words() {
+    // test the standard case
+    let double_words = "
+    use.std::sys
+    use.std::crypto::hashes::rpo
+
+    begin
+        # store four words (two double words) in memory
+        push.1.0.0.0.1000 mem_storew dropw
+        push.0.1.0.0.1004 mem_storew dropw
+        push.0.0.1.0.1008 mem_storew dropw
+        push.0.0.0.1.1012 mem_storew dropw
+
+        push.1016      # end address
+        push.1000      # start address
+        # => [start_addr, end_addr]
+
+        exec.rpo::hash_memory_double_words
+        # => [HASH]
+
+        # truncate stack
+        exec.sys::truncate_stack
+        # => [HASH]
+    end
+    ";
+
+    #[rustfmt::skip]
+    let resulting_hash: Vec<u64> = build_expected_hash(&[
+        1, 0, 0, 0,
+        0, 1, 0, 0,
+        0, 0, 1, 0,
+        0, 0, 0, 1,
+    ]).into_iter().map(|e| e.as_int()).collect();
+
+    build_test!(double_words, &[]).expect_stack(&resulting_hash);
+
+    // test the corner case when the end pointer equals to the start pointer
+    let empty_double_words = r#"
+    use.std::sys
+    use.std::crypto::hashes::rpo
+
+    begin
+        push.1000.1000 # start and end addresses
+        # => [start_addr, end_addr]
+
+        exec.rpo::hash_memory_double_words
+        # => [HASH]
+
+        # assert that the resulting hash is equal to the empty word
+        dupw padw assert_eqw.err="resulting hash should be equal to the empty word"
+
+        # truncate stack
+        exec.sys::truncate_stack
+        # => [HASH]
+    end
+    "#;
+
+    build_test!(empty_double_words, &[]).expect_stack(&[0u64; 4]);
+}
+
+#[test]
 fn test_squeeze_digest() {
     let even_words = "
     use.std::crypto::hashes::rpo
@@ -280,6 +340,56 @@ fn test_squeeze_digest() {
     even_hash.push(1016);
 
     build_test!(even_words, &[]).expect_stack(&even_hash);
+}
+
+#[test]
+fn test_copy_digest() {
+    let copy_digest = r#"
+    use.std::sys
+    use.std::crypto::hashes::rpo
+
+    begin
+        push.1.0.0.0.1000 mem_storew dropw
+        push.0.1.0.0.1004 mem_storew dropw
+
+        push.1008      # end address
+        push.1000      # start address
+        padw padw padw # hasher state
+        exec.rpo::absorb_double_words_from_memory
+        # => [C, B, A, end_ptr, end_ptr]
+
+        # drop the pointers
+        movup.12 drop movup.12 drop
+        # => [C, B, A]
+
+        # copy the result of the permutation (second word, B)
+        exec.rpo::copy_digest
+        # => [B, C, B, A]
+
+        # assert that the copied word is equal to the second word in the hasher state
+        dupw.2 dupw.1 assert_eqw.err="copied word should be equal to the second word in the hasher state"
+        # => [B, C, B, A]
+
+        # truncate stack
+        exec.sys::truncate_stack
+    end
+    "#;
+
+    #[rustfmt::skip]
+    let mut resulting_stack: Vec<u64> = build_expected_perm(&[
+        0, 0, 0, 0, // capacity, no padding required
+        1, 0, 0, 0, // first word of the rate
+        0, 1, 0, 0, // second word of the rate
+    ]).into_iter().map(|e| e.as_int()).collect();
+
+    // push the permutation result on the top of the resulting stack
+    resulting_stack[4..8]
+        .to_vec()
+        .iter()
+        .rev()
+        .for_each(|hash_element| resulting_stack.insert(0, *hash_element));
+
+    build_test!(copy_digest, &[]).expect_stack(&resulting_stack);
 }
 
 #[test]
@@ -358,9 +468,9 @@ fn test_hash_memory() {
 
     #[rustfmt::skip]
     let mut expected_hash: Vec<u64> = build_expected_hash(&[
-        1, 2, 3, 4, 
-        5, 6, 7, 8, 
-        9, 10, 11, 12, 
+        1, 2, 3, 4,
+        5, 6, 7, 8,
+        9, 10, 11, 12,
         13, 14, 15
     ]).into_iter().map(|e| e.as_canonical_u64()).collect();
     // make sure that value `11` stays unchanged
@@ -415,7 +525,7 @@ fn test_hash_memory_empty() {
     use.std::crypto::hashes::rpo
 
     begin
-        push.0    # number of elements to hash 
+        push.0    # number of elements to hash
         push.1000 # start address
 
         exec.rpo::hash_memory

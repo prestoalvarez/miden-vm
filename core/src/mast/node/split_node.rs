@@ -1,13 +1,16 @@
-use alloc::vec::Vec;
+use alloc::{boxed::Box, vec::Vec};
 use core::fmt;
 
-use miden_crypto::{Felt, PrimeCharacteristicRing, hash::rpo::RpoDigest};
+use miden_crypto::{Felt, Word};
 use miden_formatting::prettier::PrettyPrint;
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
 
+use super::{MastNodeErrorContext, MastNodeExt};
 use crate::{
     OPCODE_SPLIT,
     chiplets::hasher,
-    mast::{DecoratorId, MastForest, MastForestError, MastNodeId, Remapping},
+    mast::{DecoratedOpLink, DecoratorId, MastForest, MastForestError, MastNodeId, Remapping},
 };
 
 // SPLIT NODE
@@ -20,10 +23,13 @@ use crate::{
 /// the `on_true` child is executed. If the value is `0`, then the `on_false` child is executed. If
 /// the value is neither `0` nor `1`, the execution fails.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct SplitNode {
     branches: [MastNodeId; 2],
-    digest: RpoDigest,
+    digest: Word,
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
     before_enter: Vec<DecoratorId>,
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
     after_exit: Vec<DecoratorId>,
 }
 
@@ -64,7 +70,7 @@ impl SplitNode {
 
     /// Returns a new [`SplitNode`] from values that are assumed to be correct.
     /// Should only be used when the source of the inputs is trusted (e.g. deserialization).
-    pub fn new_unsafe(branches: [MastNodeId; 2], digest: RpoDigest) -> Self {
+    pub fn new_unsafe(branches: [MastNodeId; 2], digest: Word) -> Self {
         Self {
             branches,
             digest,
@@ -76,21 +82,6 @@ impl SplitNode {
 
 /// Public accessors
 impl SplitNode {
-    /// Returns a commitment to this Split node.
-    ///
-    /// The commitment is computed as a hash of the `on_true` and `on_false` child nodes in the
-    /// domain defined by [Self::domain()] - i..e,:
-    /// ```
-    /// # use miden_core::mast::SplitNode;
-    /// # use miden_crypto::{hash::rpo::{RpoDigest as Digest, Rpo256 as Hasher}};
-    /// # let on_true_digest = Digest::default();
-    /// # let on_false_digest = Digest::default();
-    /// Hasher::merge_in_domain(&[on_true_digest, on_false_digest], SplitNode::domain());
-    /// ```
-    pub fn digest(&self) -> RpoDigest {
-        self.digest
-    }
-
     /// Returns the ID of the node which is to be executed if the top of the stack is `1`.
     pub fn on_true(&self) -> MastNodeId {
         self.branches[0]
@@ -100,35 +91,11 @@ impl SplitNode {
     pub fn on_false(&self) -> MastNodeId {
         self.branches[1]
     }
-
-    /// Returns the decorators to be executed before this node is executed.
-    pub fn before_enter(&self) -> &[DecoratorId] {
-        &self.before_enter
-    }
-
-    /// Returns the decorators to be executed after this node is executed.
-    pub fn after_exit(&self) -> &[DecoratorId] {
-        &self.after_exit
-    }
 }
 
-/// Mutators
-impl SplitNode {
-    pub fn remap_children(&self, remapping: &Remapping) -> Self {
-        let mut node = self.clone();
-        node.branches[0] = node.branches[0].remap(remapping);
-        node.branches[1] = node.branches[1].remap(remapping);
-        node
-    }
-
-    /// Sets the list of decorators to be executed before this node.
-    pub fn set_before_enter(&mut self, decorator_ids: Vec<DecoratorId>) {
-        self.before_enter = decorator_ids;
-    }
-
-    /// Sets the list of decorators to be executed after this node.
-    pub fn set_after_exit(&mut self, decorator_ids: Vec<DecoratorId>) {
-        self.after_exit = decorator_ids;
+impl MastNodeErrorContext for SplitNode {
+    fn decorators(&self) -> impl Iterator<Item = DecoratedOpLink> {
+        self.before_enter.iter().chain(&self.after_exit).copied().enumerate()
     }
 }
 
@@ -203,5 +170,78 @@ impl fmt::Display for SplitNodePrettyPrint<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use crate::prettier::PrettyPrint;
         self.pretty_print(f)
+    }
+}
+
+// MAST NODE TRAIT IMPLEMENTATION
+// ================================================================================================
+
+impl MastNodeExt for SplitNode {
+    /// Returns a commitment to this Split node.
+    ///
+    /// The commitment is computed as a hash of the `on_true` and `on_false` child nodes in the
+    /// domain defined by [Self::DOMAIN] - i..e,:
+    /// ```
+    /// # use miden_core::mast::SplitNode;
+    /// # use miden_crypto::{Word, hash::rpo::Rpo256 as Hasher};
+    /// # let on_true_digest = Word::default();
+    /// # let on_false_digest = Word::default();
+    /// Hasher::merge_in_domain(&[on_true_digest, on_false_digest], SplitNode::DOMAIN);
+    /// ```
+    fn digest(&self) -> Word {
+        self.digest
+    }
+
+    /// Returns the decorators to be executed before this node is executed.
+    fn before_enter(&self) -> &[DecoratorId] {
+        &self.before_enter
+    }
+
+    /// Returns the decorators to be executed after this node is executed.
+    fn after_exit(&self) -> &[DecoratorId] {
+        &self.after_exit
+    }
+    /// Sets the list of decorators to be executed before this node.
+    fn append_before_enter(&mut self, decorator_ids: &[DecoratorId]) {
+        self.before_enter.extend_from_slice(decorator_ids);
+    }
+
+    /// Sets the list of decorators to be executed after this node.
+    fn append_after_exit(&mut self, decorator_ids: &[DecoratorId]) {
+        self.after_exit.extend_from_slice(decorator_ids);
+    }
+
+    /// Removes all decorators from this node.
+    fn remove_decorators(&mut self) {
+        self.before_enter.truncate(0);
+        self.after_exit.truncate(0);
+    }
+
+    fn to_display<'a>(&'a self, mast_forest: &'a MastForest) -> Box<dyn fmt::Display + 'a> {
+        Box::new(SplitNode::to_display(self, mast_forest))
+    }
+
+    fn to_pretty_print<'a>(&'a self, mast_forest: &'a MastForest) -> Box<dyn PrettyPrint + 'a> {
+        Box::new(SplitNode::to_pretty_print(self, mast_forest))
+    }
+
+    fn remap_children(&self, remapping: &Remapping) -> Self {
+        let mut node = self.clone();
+        node.branches[0] = node.branches[0].remap(remapping);
+        node.branches[1] = node.branches[1].remap(remapping);
+        node
+    }
+
+    fn has_children(&self) -> bool {
+        true
+    }
+
+    fn append_children_to(&self, target: &mut Vec<MastNodeId>) {
+        target.push(self.on_true());
+        target.push(self.on_false());
+    }
+
+    fn domain(&self) -> Felt {
+        Self::DOMAIN
     }
 }

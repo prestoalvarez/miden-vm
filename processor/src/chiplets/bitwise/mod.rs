@@ -7,6 +7,7 @@ use miden_air::trace::chiplets::bitwise::{
 use vm_core::{PrimeCharacteristicRing, PrimeField64};
 
 use super::{ExecutionError, Felt, TraceFragment, ZERO, utils::get_trace_len};
+use crate::ErrorContext;
 
 #[cfg(test)]
 mod tests;
@@ -84,9 +85,14 @@ impl Bitwise {
     ///
     /// This also adds 8 rows to the internal execution trace table required for computing the
     /// operation.
-    pub fn u32and(&mut self, a: Felt, b: Felt) -> Result<Felt, ExecutionError> {
-        let a = assert_u32(a)?.as_canonical_u64();
-        let b = assert_u32(b)?.as_canonical_u64();
+    pub fn u32and(
+        &mut self,
+        a: Felt,
+        b: Felt,
+        err_ctx: &impl ErrorContext,
+    ) -> Result<Felt, ExecutionError> {
+        let a = assert_u32(a, err_ctx)?.as_int();
+        let b = assert_u32(b, err_ctx)?.as_int();
         let mut result = 0u64;
 
         // append 8 rows to the trace, each row computing bitwise AND in 4 bit limbs starting with
@@ -119,9 +125,14 @@ impl Bitwise {
     ///
     /// This also adds 8 rows to the internal execution trace table required for computing the
     /// operation.
-    pub fn u32xor(&mut self, a: Felt, b: Felt) -> Result<Felt, ExecutionError> {
-        let a = assert_u32(a)?.as_canonical_u64();
-        let b = assert_u32(b)?.as_canonical_u64();
+    pub fn u32xor(
+        &mut self,
+        a: Felt,
+        b: Felt,
+        err_ctx: &impl ErrorContext,
+    ) -> Result<Felt, ExecutionError> {
+        let a = assert_u32(a, err_ctx)?.as_int();
+        let b = assert_u32(b, err_ctx)?.as_int();
         let mut result = 0u64;
 
         // append 8 rows to the trace, each row computing bitwise XOR in 4 bit limbs starting with
@@ -202,10 +213,10 @@ impl Default for Bitwise {
 // HELPER FUNCTIONS
 // --------------------------------------------------------------------------------------------
 
-pub fn assert_u32(value: Felt) -> Result<Felt, ExecutionError> {
-    let val_u64 = value.as_canonical_u64();
+pub fn assert_u32(value: Felt, err_ctx: &impl ErrorContext) -> Result<Felt, ExecutionError> {
+    let val_u64 = value.as_int();
     if val_u64 > u32::MAX.into() {
-        Err(ExecutionError::NotU32Value(value, ZERO))
+        Err(ExecutionError::not_u32_value(value, ZERO, err_ctx))
     } else {
         Ok(value)
     }

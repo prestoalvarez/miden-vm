@@ -1,14 +1,19 @@
 use alloc::string::String;
 use core::fmt;
 
-use crate::debuginfo::Location;
+use miden_debug_types::Location;
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
 
 // ASSEMBLY OP
 // ================================================================================================
 
 /// Contains information corresponding to an assembly instruction (only applicable in debug mode).
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(all(feature = "arbitrary", test), miden_serde_test_macros::serde_test)]
 pub struct AssemblyOp {
+    #[cfg_attr(feature = "serde", serde(default))]
     location: Option<Location>,
     context_name: String,
     op: String,

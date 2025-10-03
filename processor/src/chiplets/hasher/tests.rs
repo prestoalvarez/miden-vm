@@ -3,19 +3,20 @@ use alloc::vec::Vec;
 use miden_air::trace::chiplets::hasher::{
     DIGEST_LEN, HASH_CYCLE_LEN, NUM_ROUNDS, NUM_SELECTORS, STATE_COL_RANGE,
 };
-use test_utils::rand::rand_array;
-use vm_core::{
+use miden_core::{
     ONE, Operation, ZERO,
     chiplets::hasher,
     crypto::merkle::{MerkleTree, NodeIndex},
-    mast::{MastForest, MastNode}, PrimeCharacteristicRing, PrimeField64
+    mast::{MastForest, MastNode, MastNodeExt},
 };
+use miden_utils_testing::rand::rand_array;
 
 use super::{
     Digest, Felt, Hasher, HasherState, LINEAR_HASH, MP_VERIFY, MR_UPDATE_NEW, MR_UPDATE_OLD,
-    MerklePath, RETURN_HASH, RETURN_STATE, Selectors, TRACE_WIDTH, TraceFragment, Word,
+    MerklePath, RETURN_HASH, RETURN_STATE, Selectors, TRACE_WIDTH, TraceFragment,
     init_state_from_words,
 };
+use crate::{BasicBlockNode, JoinNode, LoopNode, SplitNode};
 
 // LINEAR HASH TESTS
 // ================================================================================================
@@ -249,19 +250,19 @@ fn hash_memoization_control_blocks() {
 
     let mut mast_forest = MastForest::new();
 
-    let t_branch = MastNode::new_basic_block(vec![Operation::Push(ZERO)], None).unwrap();
+    let t_branch = BasicBlockNode::new(vec![Operation::Push(ZERO)], Vec::new()).unwrap();
     let t_branch_id = mast_forest.add_node(t_branch.clone()).unwrap();
 
-    let f_branch = MastNode::new_basic_block(vec![Operation::Push(ONE)], None).unwrap();
+    let f_branch = BasicBlockNode::new(vec![Operation::Push(ONE)], Vec::new()).unwrap();
     let f_branch_id = mast_forest.add_node(f_branch.clone()).unwrap();
 
-    let split1 = MastNode::new_split(t_branch_id, f_branch_id, &mast_forest).unwrap();
+    let split1 = SplitNode::new([t_branch_id, f_branch_id], &mast_forest).unwrap();
     let split1_id = mast_forest.add_node(split1.clone()).unwrap();
 
-    let split2 = MastNode::new_split(t_branch_id, f_branch_id, &mast_forest).unwrap();
+    let split2 = SplitNode::new([t_branch_id, f_branch_id], &mast_forest).unwrap();
     let split2_id = mast_forest.add_node(split2.clone()).unwrap();
 
-    let join_node = MastNode::new_join(split1_id, split2_id, &mast_forest).unwrap();
+    let join_node = JoinNode::new([split1_id, split2_id], &mast_forest).unwrap();
     let _join_node_id = mast_forest.add_node(join_node.clone()).unwrap();
 
     let mut hasher = Hasher::default();
@@ -279,10 +280,11 @@ fn hash_memoization_control_blocks() {
     let expected_hash = join_node.digest();
 
     // builds the trace of the join block.
-    let (_, final_state) = hasher.hash_control_block(h1, h2, join_node.domain(), expected_hash);
+    let (_, final_state) =
+        hasher.hash_control_block(h1.into(), h2.into(), join_node.domain(), expected_hash);
 
     // make sure the hash of the final state is the same as the expected hash.
-    assert_eq!(Digest::new(final_state), expected_hash);
+    assert_eq!(final_state, expected_hash);
 
     let h1: [Felt; DIGEST_LEN] = t_branch
         .digest()
@@ -298,13 +300,14 @@ fn hash_memoization_control_blocks() {
     let expected_hash = split1.digest();
 
     // builds the hash execution trace of the first split block from scratch.
-    let (addr, final_state) = hasher.hash_control_block(h1, h2, split1.domain(), expected_hash);
+    let (addr, final_state) =
+        hasher.hash_control_block(h1.into(), h2.into(), split1.domain(), expected_hash);
 
     let first_block_final_state = final_state;
 
     // make sure the hash of the final state of the first split block is the same as the expected
     // hash.
-    assert_eq!(Digest::new(final_state), expected_hash);
+    assert_eq!(final_state, expected_hash);
 
     let start_row = addr.as_canonical_u64() as usize - 1;
     let end_row = hasher.trace_len() - 1;
@@ -323,11 +326,12 @@ fn hash_memoization_control_blocks() {
 
     // builds the hash execution trace of the second split block by copying it from the trace of
     // the first split block.
-    let (addr, final_state) = hasher.hash_control_block(h1, h2, split2.domain(), expected_hash);
+    let (addr, final_state) =
+        hasher.hash_control_block(h1.into(), h2.into(), split2.domain(), expected_hash);
 
     // make sure the hash of the final state of the second split block is the same as the expected
     // hash.
-    assert_eq!(Digest::new(final_state), expected_hash);
+    assert_eq!(final_state, expected_hash);
     // make sure the hash of the first and second split blocks is the same.
     assert_eq!(first_block_final_state, final_state);
 
@@ -350,10 +354,10 @@ fn hash_memoization_control_blocks() {
 fn hash_memoization_basic_blocks() {
     // --- basic block with 1 batch ----------------------------------------------------------------
     let basic_block =
-        MastNode::new_basic_block(vec![Operation::Push(Felt::from_u64(10)), Operation::Drop], None)
+        BasicBlockNode::new(vec![Operation::Push(Felt::new(10)), Operation::Drop], Vec::new())
             .unwrap();
 
-    hash_memoization_basic_blocks_check(basic_block);
+    hash_memoization_basic_blocks_check(basic_block.into());
 
     // --- basic block with multiple batches -------------------------------------------------------
     let ops = vec![
@@ -394,9 +398,9 @@ fn hash_memoization_basic_blocks() {
         Operation::Drop,
         Operation::Drop,
     ];
-    let basic_block = MastNode::new_basic_block(ops, None).unwrap();
+    let basic_block = BasicBlockNode::new(ops, Vec::new()).unwrap();
 
-    hash_memoization_basic_blocks_check(basic_block);
+    hash_memoization_basic_blocks_check(basic_block.into());
 }
 
 fn hash_memoization_basic_blocks_check(basic_block: MastNode) {
@@ -420,19 +424,19 @@ fn hash_memoization_basic_blocks_check(basic_block: MastNode) {
     let basic_block_1_id = mast_forest.add_node(basic_block_1.clone()).unwrap();
 
     let loop_body_id = mast_forest
-        .add_block(vec![Operation::Pad, Operation::Eq, Operation::Not], None)
+        .add_block(vec![Operation::Pad, Operation::Eq, Operation::Not], Vec::new())
         .unwrap();
 
-    let loop_block = MastNode::new_loop(loop_body_id, &mast_forest).unwrap();
+    let loop_block = LoopNode::new(loop_body_id, &mast_forest).unwrap();
     let loop_block_id = mast_forest.add_node(loop_block.clone()).unwrap();
 
-    let join2_block = MastNode::new_join(basic_block_1_id, loop_block_id, &mast_forest).unwrap();
+    let join2_block = JoinNode::new([basic_block_1_id, loop_block_id], &mast_forest).unwrap();
     let join2_block_id = mast_forest.add_node(join2_block.clone()).unwrap();
 
     let basic_block_2 = basic_block;
     let basic_block_2_id = mast_forest.add_node(basic_block_2.clone()).unwrap();
 
-    let join1_block = MastNode::new_join(join2_block_id, basic_block_2_id, &mast_forest).unwrap();
+    let join1_block = JoinNode::new([join2_block_id, basic_block_2_id], &mast_forest).unwrap();
 
     let mut hasher = Hasher::default();
     let h1: [Felt; DIGEST_LEN] = join2_block
@@ -448,10 +452,11 @@ fn hash_memoization_basic_blocks_check(basic_block: MastNode) {
     let expected_hash = join1_block.digest();
 
     // builds the trace of the Join1 block.
-    let (_, final_state) = hasher.hash_control_block(h1, h2, join1_block.domain(), expected_hash);
+    let (_, final_state) =
+        hasher.hash_control_block(h1.into(), h2.into(), join1_block.domain(), expected_hash);
 
     // make sure the hash of the final state of Join1 is the same as the expected hash.
-    assert_eq!(Digest::new(final_state), expected_hash);
+    assert_eq!(final_state, expected_hash);
 
     let h1: [Felt; DIGEST_LEN] = basic_block_1
         .digest()
@@ -465,10 +470,11 @@ fn hash_memoization_basic_blocks_check(basic_block: MastNode) {
         .expect("Could not convert slice to array");
     let expected_hash = join2_block.digest();
 
-    let (_, final_state) = hasher.hash_control_block(h1, h2, join2_block.domain(), expected_hash);
+    let (_, final_state) =
+        hasher.hash_control_block(h1.into(), h2.into(), join2_block.domain(), expected_hash);
 
     // make sure the hash of the final state of Join2 is the same as the expected hash.
-    assert_eq!(Digest::new(final_state), expected_hash);
+    assert_eq!(final_state, expected_hash);
 
     let basic_block_1_val = if let MastNode::Block(basic_block) = basic_block_1.clone() {
         basic_block
@@ -484,7 +490,7 @@ fn hash_memoization_basic_blocks_check(basic_block: MastNode) {
 
     // make sure the hash of the final state of basic block 1 is the same as the expected hash.
     let expected_hash = basic_block_1.digest();
-    assert_eq!(Digest::new(final_state), expected_hash);
+    assert_eq!(final_state, expected_hash);
 
     let start_row = addr.as_canonical_u64() as usize - 1;
     let end_row = hasher.trace_len() - 1;
@@ -504,7 +510,7 @@ fn hash_memoization_basic_blocks_check(basic_block: MastNode) {
 
     let expected_hash = basic_block_2.digest();
     // make sure the hash of the final state of basic block 2 is the same as the expected hash.
-    assert_eq!(Digest::new(final_state), expected_hash);
+    assert_eq!(final_state, expected_hash);
 
     // make sure the hash of the first and second basic blocks is the same.
     assert_eq!(first_basic_block_final_state, final_state);
@@ -535,7 +541,7 @@ fn build_trace(hasher: Hasher, num_rows: usize) -> Vec<Vec<Felt>> {
 fn check_merkle_path(
     trace: &[Vec<Felt>],
     row_idx: usize,
-    leaf: Word,
+    leaf: Digest,
     path: &MerklePath,
     node_index: u64,
     init_selectors: Selectors,
@@ -555,10 +561,10 @@ fn check_merkle_path(
         let index_bit = (node_index >> i) & 1;
         let old_root = root;
         let init_state = if index_bit == 0 {
-            root = hasher::merge(&[root.into(), node]).into();
+            root = hasher::merge(&[root, node]);
             init_state_from_words(&old_root, &node)
         } else {
-            root = hasher::merge(&[node, root.into()]).into();
+            root = hasher::merge(&[node, root]);
             init_state_from_words(&node, &old_root)
         };
         check_hasher_state_trace(trace, row_idx + i * 8, init_state);
@@ -647,10 +653,10 @@ fn apply_permutation(mut state: HasherState) -> HasherState {
     state
 }
 
-fn init_leaves(values: &[u64]) -> Vec<Word> {
+fn init_leaves(values: &[u64]) -> Vec<Digest> {
     values.iter().map(|&v| init_leaf(v)).collect()
 }
 
-fn init_leaf(value: u64) -> Word {
-    [Felt::from_u64(value), ZERO, ZERO, ZERO]
+fn init_leaf(value: u64) -> Digest {
+    [Felt::new(value), ZERO, ZERO, ZERO].into()
 }

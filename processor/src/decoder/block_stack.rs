@@ -7,7 +7,7 @@ use crate::system::ContextId;
 // ================================================================================================
 
 /// Keeps track of code blocks which are currently being executed by the VM.
-#[derive(Default)]
+#[derive(Debug, Default, Clone)]
 pub struct BlockStack {
     blocks: Vec<BlockInfo>,
 }
@@ -74,14 +74,18 @@ impl BlockStack {
         let block = self.blocks.pop().expect("block stack is empty");
         // if the parent block is a JOIN block (i.e., we just finished executing a child of a JOIN
         // block) and if the first_child_executed hasn't been set to true yet, set it to true
-        if let Some(parent) = self.blocks.last_mut() {
-            if let BlockType::Join(first_child_executed) = parent.block_type {
-                if !first_child_executed {
-                    parent.block_type = BlockType::Join(true);
-                }
-            }
+        if let Some(parent) = self.blocks.last_mut()
+            && let BlockType::Join(first_child_executed) = parent.block_type
+            && !first_child_executed
+        {
+            parent.block_type = BlockType::Join(true);
         }
         block
+    }
+
+    /// Returns true if the block stack is empty.
+    pub fn is_empty(&self) -> bool {
+        self.blocks.is_empty()
     }
 
     /// Returns a reference to a block at the top of the stack.
@@ -99,7 +103,7 @@ impl BlockStack {
 // ================================================================================================
 
 /// Contains basic information about a code block.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BlockInfo {
     pub addr: Felt,
     block_type: BlockType,
@@ -195,5 +199,5 @@ pub enum BlockType {
     Dyn,
     Dyncall,
     SysCall,
-    Span,
+    BasicBlock,
 }

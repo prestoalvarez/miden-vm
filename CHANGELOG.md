@@ -1,7 +1,273 @@
 # Changelog
 
-## 0.14.0 TBD
+## 0.19.0 (TBD)
 
+#### Enhancements
+
+- Added support for leaves with multiple pairs in `std::collections::smt::get` ([#2048](https://github.com/0xMiden/miden-vm/pull/2048)).
+- Added `std::mem::pipe_double_words_preimage_to_memory`, a version of `pipe_preimage_to_memory` optimized for pairs of words ([#2048](https://github.com/0xMiden/miden-vm/pull/2048)).
+
+#### Changes
+
+- [BREAKING] Incremented MSRV to 1.90.
+- [BREAKING] Fix inconsistencies in debugging instructions ([#2205](https://github.com/0xMiden/miden-vm/pull/2205)).
+- Fix ability to parse odd-length hex strings ([#2196](https://github.com/0xMiden/miden-vm/pull/2196)).
+- Added `before_enter` and `after_exit` decorator lists to `BasicBlockNode`.([#2167](https://github.com/0xMiden/miden-vm/pull/2167)).
+- Added `proptest`'s `Arbitrary` instances for `BasicBlockNode` and `MastForest` ([#2200](https://github.com/0xMiden/miden-vm/pull/2200)).
+- Fixed mismatched Push expectations in decoder syscall_block test ([#2207](https://github.com/0xMiden/miden-vm/pull/2207))
+- [BREAKING] `Memory::read_element()` now requires `&self` instead of `&mut self` ([#2237](https://github.com/0xMiden/miden-vm/issues/2237))
+- Added `proptest`'s `Arbitrary` instances for `Program`, fixed `Attribute` serialization ([#2224](https://github.com/0xMiden/miden-vm/pull/2224)).
+
+## 0.18.1 (2025-10-02)
+
+- Gate stdlib doc generation in build.rs on `MIDEN_BUILD_STDLIB_DOCS` environmnent variable ([#2239](https://github.com/0xMiden/miden-vm/pull/2239/))
+
+## 0.18.0 (2025-09-21)
+
+#### Enhancements
+
+- Added slicing for the word constants ([#2057](https://github.com/0xMiden/miden-vm/pull/2057)).
+- Added ability to declare word-sized constants from strings ([#2073](https://github.com/0xMiden/miden-vm/pull/2073)).
+- Added new `adv.insert_hqword` instruction ([#2097](https://github.com/0xMiden/miden-vm/pull/2097)).
+- Added option to use Poseidon2 in proving ([#2098](https://github.com/0xMiden/miden-vm/pull/2098)).
+- Reinstate the build of the stdlib's documentation ([#1432](https://github.com/0xmiden/miden-vm/issues/1432)).
+- Added `FastProcessor::execute_for_trace()`, which outputs a series of checkpoints necessary to build the trace in parallel ([#2023](https://github.com/0xMiden/miden-vm/pull/2023))
+- Introduced `Tracer` trait to allow different ways of tracing program execution, including no tracing ([#2101](https://github.com/0xMiden/miden-vm/pull/2101))
+- `FastProcessor::execute_*()` methods now also return the state of the memory in a new `ExecutionOutput` struct ([#2028](https://github.com/0xMiden/miden-vm/pull/2128))
+- Removed all stack underflow error cases from `FastProcessor` ([#2173](https://github.com/0xMiden/miden-vm/pull/2173)).
+- Added `reversew` and `reversedw` instructions for reversing the order of elements in a word and double word on the stack ([#2125](https://github.com/0xMiden/miden-vm/issues/2125)).
+- Added endianness-aware memory instructions: `mem_loadw_be`, `mem_loadw_le`, `mem_storew_be`, and `mem_storew_le` for explicit control over word element ordering in memory operations ([#2125](https://github.com/0xMiden/miden-vm/issues/2125)).
+- Added non-deterministic lookup for sorted arrays to stdlib ([#2114](https://github.com/0xMiden/miden-vm/pull/2114)).
+- Introduced syntax for expressing type information in MASM ([#2120](https://github.com/0xMiden/miden-vm/pull/2120)).
+- Added `reversew` and `reversedw` instructions for reversing the order of elements in a word and double word on the stack ([#2125](https://github.com/0xMiden/miden-vm/issues/2125)).
+- Added endianness-aware memory instructions: `mem_loadw_be`, `mem_loadw_le`, `mem_storew_be`, and `mem_storew_le` for explicit control over word element ordering in memory operations ([#2125](https://github.com/0xMiden/miden-vm/issues/2125)).
+- `FastProcessor::execute_*()` methods now also return the state of the memory in a new `ExecutionOutput` struct ([#2028](https://github.com/0xMiden/miden-vm/pull/2128)).
+- Better document the normalizing behavior of `MastForestMerger::merge` ([#2174](https://github.com/0xMiden/miden-vm/pull/2174)).
+- Propagate procedure annotations to `Library` and `Package` metadata ([#2189](https://github.com/0xMiden/miden-vm/pull/2189)).
+
+#### Changes
+
+- Fixed fast loop node not running after-exit decorators when skipping the body (condition == 0) ([#2169](https://github.com/0xMiden/miden-vm/pull/2169)).
+- Removed unused `PushU8List`, `PushU16List`, `PushU32List` and `PushFeltList` instructions ([#2057](https://github.com/0xMiden/miden-vm/pull/2057)).
+- Removed dedicated `PushU8`, `PushU16`, `PushU32`, `PushFelt`, and `PushWord` assembly instructions. These have been replaced with the generic `Push<Immediate>` instruction which supports all the same functionality through the `IntValue` enum (U8, U16, U32, Felt, Word) ([#2066](https://github.com/0xMiden/miden-vm/issues/2066)).
+- [BREAKING] Update miden-crypto dependency to v0.16 (#[2079](https://github.com/0xMiden/miden-vm/pull/2079))
+- Made `get_mast_forest()` async again for `AsyncHost` now that basic conditional async support is in place ([#2060](https://github.com/0xMiden/miden-vm/issues/2060)).
+- Improved error message of binary operations on U32 values to report both erroneous operands, if applicable. ([#1327](https://github.com/0xMiden/miden-vm/issues/1327)).
+- [BREAKING] `emit` no longer takes an immediate and instead gets the event ID from the stack (#[2068](https://github.com/0xMiden/miden-vm/issues/2068)).
+- [BREAKING] `Operation::Emit` no longer contains a `u32` parameter, affecting pattern matching and serialization (#[2068](https://github.com/0xMiden/miden-vm/issues/2068)).
+- [BREAKING] Host `on_event` methods no longer receive `event_id` parameter; event ID must be read from stack position 0 (#[2068](https://github.com/0xMiden/miden-vm/issues/2068)).
+- [BREAKING] `get_stack_word` uses element-aligned indexing instead of word-aligned indexing (#[2068](https://github.com/0xMiden/miden-vm/issues/2068)).
+- [BREAKING] Implemented support for `event("event_name")` in MASM (#[2068](https://github.com/0xMiden/miden-vm/issues/2068)).
+- Improved representation of `OPbatches` to include padding Noop by default, simplifying fast iteration over program instructions in the processor ([#1815](https://github.com/0xMiden/miden-vm/issues/1815)).
+- Changed multiple broken links across the repository ([#2110](https://github.com/0xMiden/miden-vm/pull/2110)).
+- Rename `program_execution` benchmark to `program_execution_for_trace`, and benchmark `FastProcessor::execute_for_trace()` instead of `Process::execute()` (#[2131](https://github.com/0xMiden/miden-vm/pull/2131))
+- [BREAKING] Initial support for Keccak precompile ([#2103](https://github.com/0xMiden/miden-vm/pull/2103)).
+- Refactored `MastNode` to eliminate boilerplate dispatch code ([#2127](https://github.com/0xMiden/miden-vm/pull/2127)).
+- [BREAKING] Introduce `EventId` type ([#2137](https://github.com/0xMiden/miden-vm/issues/2137)).
+- Added `multicall` support for the CLI ([#1141](https://github.com/0xMiden/miden-vm/pull/2081)).
+- Made `miden-prover`'s metal prover async-compatible. ([#2133](https://github.com/0xMiden/miden-vm/pull/2133)).
+- Abstracted away the fast processor's operation execution into a new `Processor` trait ([#2141](https://github.com/0xMiden/miden-vm/pull/2141)).
+- [BREAKING] Implemented custom section support in package format, and removed `account_component_metadata` field ([#2071](https://github.com/0xMiden/miden-vm/pull/2071)).
+- Moved `EMIT` flag to degree 5 bucket ([#2043](https://github.com/0xMiden/miden-vm/issues/2043)).
+- [BREAKING] Renumber system event IDs ([#2151](https://github.com/0xMiden/miden-vm/issues/2151)).
+- [BREAKING] Update miden-crypto dependency to v0.17 (#[2168](https://github.com/0xMiden/miden-vm/pull/2168)).
+- [BREAKING] Moved `u64_div`, `falcon_div` and `smtpeek` system events to stdlib ([#1582](https://github.com/0xMiden/miden-vm/issues/1582)).
+- [BREAKING] `MastNode` quality of life improvements ([#2166](https://github.com/0xMiden/miden-vm/pull/2166)).
+- Allowed references between constants without requiring them to be declared in a specific order ([#2120](https://github.com/0xMiden/miden-vm/pull/2120)).
+- Introduced new `pub proc` syntax for procedure declarations to replace `export` syntax. This change is backwards-compatible. ([#2120](https://github.com/0xMiden/miden-vm/pull/2120)).
+- [BREAKING] Disallowed the use of word literals in conjunction with dot-delimited `push` syntax ([#2120](https://github.com/0xMiden/miden-vm/pull/2120)).
+- Fixed `RawDecoratorIdIterator` un-padding off-by-one ([#2193](https://github.com/0xMiden/miden-vm/pull/2193)).
+
+## 0.17.2 (2025-09-17)
+
+- Hotfix: remove all stack underflow errors ([#2182](https://github.com/0xMiden/miden-vm/pull/2182)).
+
+## 0.17.1 (2025-08-29)
+
+- added `MastForest::strip_decorators()` ([#2108](https://github.com/0xMiden/miden-vm/pull/2108)).
+
+## 0.17.0 (2025-08-06)
+
+#### Enhancements
+
+- [BREAKING] Implemented custom Event handlers ([#1584](https://github.com/0xMiden/miden-vm/pull/1584)).
+- Implemented `copy_digest` and `hash_memory_double_words` procedures in the `std::crypto::hashes::rpo` module ([#1971](https://github.com/0xMiden/miden-vm/pull/1971)).
+- Added `extend_` methods on AdviceProvider [#1982](https://github.com/0xMiden/miden-vm/pull/1982).
+- Added new stdlib module `std::word`, containing utilities for manipulating arrays of four fields (words) ([#1996](https://github.com/0xMiden/miden-vm/pull/1996)).
+- Added constraints evaluation check to recursive verifier ([#1997](https://github.com/0xMiden/miden-vm/pull/1997)).
+- Make recursive verifier in `stdlib` reusable through dynamic procedure execution ([#2008](https://github.com/0xMiden/miden-vm/pull/2008)).
+- Added `AdviceProvider::into_parts()` method ([#2024](https://github.com/0xMiden/miden-vm/pull/2024)).
+- Added type information to procedures in the AST, `Library`, and `PackageExport` types ([#2028](https://github.com/0xMiden/miden-vm/pull/2028)).
+- Added `drop_stack_top` procedure in `std::sys` ([#2031](https://github.com/0xMiden/miden-vm/pull/2031)).
+
+#### Changes
+
+- [BREAKING] Incremented MSRV to 1.88.
+- [BREAKING] Implemented preliminary changes for lazy loading of external `MastForest` `AdviceMap`s ([#1949](https://github.com/0xMiden/miden-vm/issues/1949)).
+- Enhancement for all benchmarks (incl. `program_execution_fast`) are built and run in a new CI job with required feature flags [(#https://github.com/0xMiden/miden-vm/issues/1964)](https://github.com/0xMiden/miden-vm/issues/1964).
+- [BREAKING] Introduced `SourceManagerSync` trait, and remove `Assembler::source_manager()` method [#1966](https://github.com/0xMiden/miden-vm/issues/1966).
+- Fixed `ExecutionOptions::default()` to set `max_cycles` correctly to `1 << 29` ([#1969](https://github.com/0xMiden/miden-vm/pull/1969)).
+- [BREAKING] Reverted `get_mapped_value` return signature [(#1981)](https://github.com/0xMiden/miden-vm/issues/1981).
+- Converted `FastProcessor::execute()` from recursive to iterative execution ([#1989](https://github.com/0xMiden/miden-vm/issues/1989)).
+- [BREAKING]: move `std::utils::is_empty_word` to `std::word::eqz`, as part of the new word module [#1996](https://github.com/0xMiden/miden-vm/pull/1996).
+- [BREAKING] `{AsyncHost,SyncHost}::on_event` now returns a list of `AdviceProvider` mutations ([#2003](https://github.com/0xMiden/miden-vm/pull/2003)).
+- [BREAKING] made `AdviceInputs` field public and removed redundant accessors ([#2009](https://github.com/0xMiden/miden-vm/pull/2009)).
+- [BREAKING] Moved the `SourceManager` from the processor to the host [#2019](https://github.com/0xMiden/miden-vm/pull/2019).
+- [BREAKING] `FastProcessor::execute()` now also returns the `AdviceProvider` ([#2026](https://github.com/0xMiden/miden-vm/pull/2026)).
+- Allowed for 234 "spurious drops" before the fast processor underflows, up from 34 ([#2035](https://github.com/0xMiden/miden-vm/pull/2035)) .
+- [BREAKING] `Library::exports` now returns `(&QualifiedProcedureName, &LibraryExport)` rather than just `&QualifiedProcedureName`, to allow callers to extract more useful information ([#2028](https://github.com/0xMiden/miden-vm/pull/2028)).
+- [BREAKING] The serialized representation for `Package` was changed to include procedure type information. Older packages will not work with the new serialization code, and vice versa. The version of the binary format was incremented accordingly ([#2028](https://github.com/0xMiden/miden-vm/pull/2028)).
+- [BREAKING] Procedure-related metadata types in the `miden-assembly` crate in some cases now require an optional type signature argument. If that information is not available, you can simply pass `None` to retain current behavior ([#2028](https://github.com/0xMiden/miden-vm/pull/2028)).
+- Remove basic block clock cycle optimization from `FastProcessor` ([#2054](https://github.com/0xMiden/miden-vm/pull/2054)).
+
+## 0.16.4 (2025-07-24)
+
+- Made `AdviceInputs` field public.
+
+## 0.16.3 (2025-07-18)
+
+- Add `new_dummy` method on `ExecutionProof` ([#2007](https://github.com/0xMiden/miden-vm/pull/2007)).
+
+## 0.16.2 (2025-07-11)
+
+- Fix `debug::print_vm_stack` which was returning the advice stack instead of the system stack [(#1984)](https://github.com/0xMiden/miden-vm/issues/1984).
+
+## 0.16.1 (2025-07-10)
+
+- Make `Process::state()` public and re-introduce `From<&Process> for ProcessState`.
+- Return `AdviceProvider` as part of the `ExecutionTrace`.
+
+## 0.16.0 (2025-07-08)
+
+#### Enhancements
+
+- Optimized handling of variable length public inputs in the recursive verifier (#1842).
+- Simplify processing of OOD evaluations in the recursive verifier (#1848).
+- Allowed constants to be declared as words and to be arguments of the `push` instruction (#1855).
+- Allowed definition of Advice Map data in MASM programs. The data is loaded by the host before execution (#1862).
+- Improved the documentation for the `Assembler` and its APIs to better explain how each affects the final assembled artifact (#1881).
+- It is now possible to assemble kernels with multiple modules while allowing those modules to perform kernel-like actions, such as using the `caller` instruction. (#1893).
+- Made `ErrorContext` zero-cost ([#1910](https://github.com/0xMiden/miden-vm/issues/1910)).
+- Made `FastProcessor` output rich error diagnostics ([#1914](https://github.com/0xMiden/miden-vm/issues/1914)).
+- [BREAKING] Make `FastProcessor::execute()` async ([#1933](https://github.com/0xMiden/miden-vm/issues/1933)).
+- The `SourceManager` API was improved to be more precise about source file locations (URIs) and language type. This is intended to support the LSP server implementation. ([#1937](https://github.com/0xMiden/miden-vm/pull/1937)).
+- `SourceManager::update` was added to allow for the LSP server to update documents stored in the source manager based on edits made by the user. ([#1937](https://github.com/0xMiden/miden-vm/pull/1937)).
+- Implemented a new `adv.has_mapkey` decorator ([#1941](https://github.com/0xMiden/miden-vm/pull/1941)).
+- Added `get_procedure_root_by_name` method to the `Library` struct ([#1961](https://github.com/0xMiden/miden-vm/pull/1961)).
+
+#### Changes
+
+- Updated lalrpop dependency to 0.22 (#1865)
+- Removed the obsolete `RpoFalcon512` decorator and associated structs (#1872).
+- Fixed instructions with errors print without quotes (#1882).
+- [BREAKING] Renamed `Assembler::add_module` to `Assembler::compile_and_statically_link` (#1881).
+- [BREAKING] Renamed `Assembler::add_modules` to `Assembler::compile_and_statically_link_all` (#1881).
+- [BREAKING] Renamed `Assembler::add_modules_from_dir` to `Assembler::compile_and_statically_link_from_dir` (#1881).
+- [BREAKING] Removed `Assembler::add_module_with_options` (#1881).
+- [BREAKING] Removed `Assembler::add_modules_with_options` (#1881).
+- [BREAKING] Renamed `Assembler::add_library` to `Assembler::link_dynamic_library` (#1881).
+- [BREAKING] Renamed `Assembler::add_vendored_library` to `Assembler::link_static_library` (#1881).
+- [BREAKING] `AssemblyError` was removed, and all uses replaced with `Report` (#1881).
+- [BREAKING] `Compile` trait was renamed to `Parse`.
+- [BREAKING] `CompileOptions` was renamed to `ParseOptions`.
+- Licensed the project under the Apache 2.0 license (in addition to the MIT) (#1883).
+- Uniform chiplet bus message flag encoding (#1887).
+- [BREAKING] Updated dependencies Winterfell to v0.13 and Crypto to v0.15 (#1896).
+- [BREAKING] Converted `AdviceProvider` into a struct ([#1904](https://github.com/0xMiden/miden-vm/issues/1904), [#1905](https://github.com/0xMiden/miden-vm/issues/1905)).
+- [BREAKING] `Host::get_mast_forest` takes `&mut self` ([#1902](https://github.com/0xMiden/miden-vm/issues/1902)).
+- [BREAKING] `ProcessState` returns `MemoryError` instead of `ExecutionError` ([#1912](https://github.com/0xMiden/miden-vm/issues/1912)).
+- [BREAKING] `AdviceProvider` returns its own error type ([#1907](https://github.com/0xMiden/miden-vm/issues/1907).
+- Split out the syntax-related aspects of the `miden-assembly` crate into a new crate called `miden-assembly-syntax` ([#1921](https://github.com/0xMiden/miden-vm/pull/1921)).
+- Removed the dependency on `miden-assembly` from `miden-mast-package` ([#1921](https://github.com/0xMiden/miden-vm/pull/1921)).
+- [BREAKING] Removed `Library::from_dir` in favor of `Assembler::assemble_library_from_dir` ([#1921](https://github.com/0xMiden/miden-vm/pull/1921)).
+- [BREAKING] Removed `KernelLibrary::from_dir` in favor of `Assembler::assemble_kernel_from_dir` ([#1921](https://github.com/0xMiden/miden-vm/pull/1921)).
+- [BREAKING] Fixed incorrect namespace being set on modules parsed using the `lib_dir` parameter of `KernelLibrary::from_dir`. ([#1921](https://github.com/0xMiden/miden-vm/pull/1921))..
+- [BREAKING] The signature of `SourceManager::load` has changed, and now requires a `SourceLanguage` and `Uri` parameter. ([#1937](https://github.com/0xMiden/miden-vm/pull/1937)).
+- [BREAKING] The signature of `SourceManager::load_from_raw_parts` has changed, and now requires a `Uri` parameter in place of `&str`. ([#1937](https://github.com/0xMiden/miden-vm/pull/1937)).
+- [BREAKING] The signature of `SourceManager::find` has changed, and now requires a `Uri` parameter in place of `&str`. ([#1937](https://github.com/0xMiden/miden-vm/pull/1937)).
+- [BREAKING] `SourceManager::get_by_path` was renamed to `get_by_uri`, and now requires a `&Uri` instead of a `&str` for the URI/path parameter ([#1937](https://github.com/0xMiden/miden-vm/pull/1937)).
+- [BREAKING] The `path` parameter of `Location` and `FileLineCol` debuginfo types was renamed to `uri`, and changed from `Arc<str>` to `Uri` type. ([#1937](https://github.com/0xMiden/miden-vm/pull/1937)).
+- [BREAKING] Move `AdviceProvider` from `Host` to `ProcessState` ([#1923](https://github.com/0xMiden/miden-vm/issues/1923))).
+- Removed decorator for interpolating polynomials over degree 2 extension field ([#1875](https://github.com/0xMiden/miden-vm/issues/1875)).
+- Removed MASM code for probabilistic NTT ([#1875](https://github.com/0xMiden/miden-vm/issues/1875)).
+- Moved implementation of `miden_assembly_syntax::diagnostics` into a new `miden-utils-diagnostics` crate ([#1945](https://github.com/0xMiden/miden-vm/pull/1945)).
+- Moved implementation of `miden_core::debuginfo` into a new `miden-debug-types` crate ([#1945](https://github.com/0xMiden/miden-vm/pull/1945)).
+- Moved implementation of `miden_core::sync` into a new `miden-utils-sync` crate ([#1945](https://github.com/0xMiden/miden-vm/pull/1945)).
+- [BREAKING] Replaced `miden_assembly_syntax::Version` with `semver::Version` ([#1946](https://github.com/0xMiden/miden-vm/pull/1946))
+
+#### Fixes
+
+- Fixed `SourceContent::update` splice logic to prevent panics on single-line edits and respect exclusive end semantics for multi-line edits ([#XXXX](https://github.com/0xMiden/miden-vm/pull/2146)).
+- Truncated nprime.masm output stack to prevent overflow during benchmarks ([#1879](https://github.com/0xMiden/miden-vm/issues/1879)).
+- Modules can now be provided in any order to the `Assembler`, see #1669 (#1881).
+- Addressed bug which caused references to re-exported procedures whose definition internally referred to an aliased module import, to produce an "undefined module" error, see #1451 (#1892).
+- The special identifiers for kernel, executable, and anonymous namespaces were not valid MASM syntax (#1893).
+- `AdviceProvider`: replace `SimpleAdviceMap` with `AdviceMap` struct from `miden-core` & add `merge_advice_map` to `AdviceProvider` ([#1924](https://github.com/0xMiden/miden-vm/issues/1924) & [#1922](https://github.com/0xMiden/miden-vm/issues/1922)).
+- [BREAKING] Disallow usage of the field modulus as an immediate value ([#1938](https://github.com/0xMiden/miden-vm/pull/1938)).
+
+## 0.15.0 (2025-06-06)
+
+#### Enhancements
+
+- Add `debug.stack_adv` and `debug.stack_adv.<n>` to help debug the advice stack (#1828).
+- Add a complete description of the constraints for `horner_eval_base` and `horner_eval_ext` (#1817).
+- Add documentation for ACE chiplet (#1766)
+- Add support for setting debugger breakpoints via `breakpoint` instruction (#1860)
+- Improve error messages for some procedure locals-related errors (#1863)
+- Add range checks to the `push_falcon_mod_result` advice injector to make sure that the inputs are `u32` (#1819).
+
+#### Changes
+
+- [BREAKING] Rename `miden` executable to `miden-vm`
+- Improve error messages for some assembler instruction (#1785)
+- Remove `idx` column from Kernel ROM chiplet and use chiplet bus for initialization. (#1818)
+- [BREAKING] Make `Assembler::source_manager()` be `Send + Sync` (#1822)
+- Refactored `ProcedureName` validation logic to improve readability (#1663)
+- Simplify and optimize the recursive verifier (#1801).
+- Simplify auxiliary randomness generation (#1810).
+- Add handling of variable length public inputs to the recursive verifier (#1813).
+
+#### Fixes
+
+- `miden debug` rewind command no longer panics at clock 0 (#1751)
+- Prevent overflow in ACE circuit evaluation (#1820)
+- `debug.local` decorators no longer panic or print incorrect values (#1859)
+
+## 0.14.0 (2025-05-07)
+
+#### Enhancements
+
+- Add kernel procedures digests as public inputs to the recursive verifier (#1724).
+- add optional `Package::account_component_metadata_bytes` to store serialized `AccountComponentMetadata` (#1731).
+- Add `executable` feature to the `make test` and `make test-build` Make commands (#1762).
+- Allow asserts instruction to take error messages as strings instead of error codes as Felts (#1771).
+- Add arithmetic evaluation chiplet (#1759).
+- Update the recursive verifier to use arithmetic evaluation chiplet (#1760).
+
+#### Changes
+
+- Replace deprecated #[clap(...)] with #[command(...)] and #[arg(.…)] (#1794)
+- Add pull request template to guide contributors (#1795)
+- [BREAKING] `ExecutionOptions::with_debugging()` now takes a boolean parameter (#1761)
+- Use `MemoryAddress(u32)` for `VmState` memory addresses instead of plain `u64` (#1758).
+- [BREAKING] Improve processor errors for memory and calls (#1717)
+- Implement a new fast processor that doesn't generate a trace (#1668)
+- `ProcessState::get_stack_state()` now only returns the state of the active context (#1753)
+- Change `MastForestBuilder::set_after_exit()` for `append_after_exit()` (#1775)
+- Improve processor error diagnostics (#1765)
+- Fix source spans associated with assert* and mtree_verify instructions (#1789)
+- [BREAKING] Improve the layout of the memory used by the recursive verifier (#1857)
+
+## 0.13.2 (2025-04-02)
+
+#### Changes
+
+- Relaxed rules for identifiers created via `Ident::new`, `ProcedureName::new`, `LibraryNamespace::new`, and `Library::new_from_components` (#1735)
+- [BREAKING] Renamed `Ident::new_unchecked` and `ProcedureName::new_unchecked` to `from_raw_parts` (#1735).
+
+#### Fixes
+
+- Fixed various issues with pretty printing of Miden Assembly (#1740).
 
 ## 0.13.1 (2025-03-21) - `stdlib` crate only
 
@@ -18,6 +284,7 @@
 - [BREAKING] Introduced `HORNERBASE`, `HORNEREXT` and removed `RCOMBBASE` instructions (#1656).
 
 #### Changes
+
 - Update minimum supported Rust version to 1.85.
 - Change Chiplet Fields to Public (#1629).
 - [BREAKING] Updated Winterfell dependency to v0.12 (#1658).
@@ -37,9 +304,11 @@
 ## 0.12.0 (2025-01-22)
 
 #### Highlights
+
 - [BREAKING] Refactored memory to be element-addressable (#1598).
 
 #### Changes
+
 - [BREAKING] Resolved flag collision in `--verify` command and added functionality for optional input/output files (#1513).
 - [BREAKING] Refactored `MastForest` serialization/deserialization to put decorator data at the end of the binary (#1531).
 - [BREAKING] Refactored `Process` struct to no longer take ownership of the `Host` (#1571).
@@ -51,12 +320,13 @@
 - Moved handling of `FalconSigToStack` event from system event handlers to the `DefaultHost` (#1630).
 
 #### Enhancements
+
 - Added options `--kernel`, `--debug` and `--output` to `miden bundle` (#1447).
 - Added `miden_core::mast::MastForest::advice_map` to load it into the advice provider before the `MastForest` execution (#1574).
 - Optimized the computation of the DEEP queries in the recursive verifier (#1594).
 - Added validity checks for the inputs to the recursive verifier (#1596).
 - Allow multiple memory reads in the same clock cycle (#1626)
-- Improved Falcon signiture verification (#1623).
+- Improved Falcon signature verification (#1623).
 - Added `miden-mast-package` crate with `Package` type to represent a compiled Miden program/library (#1544).
 
 ## 0.11.0 (2024-11-04)
@@ -200,6 +470,7 @@
 - The `Module::parse_file` and `Module::parse_str` functions have been removed in favor of calling `Module::parser` and then using the `ModuleParser` methods.
 - The `Compile` trait now requires passing a `SourceManager` reference along with the item to be compiled.
 - Update minimum supported Rust version to 1.80 (#1425).
+- Made `debug` mode the default in the CLI. Added `--release` flag to disable debugging instead of having to enable it. (#1728)
 
 ## 0.9.2 (2024-05-22) - `stdlib` crate only
 

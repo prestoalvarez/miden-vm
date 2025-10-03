@@ -5,15 +5,16 @@ use miden_air::trace::{
     chiplets::{
         NUM_BITWISE_SELECTORS, NUM_KERNEL_ROM_SELECTORS, NUM_MEMORY_SELECTORS,
         bitwise::{BITWISE_XOR, OP_CYCLE_LEN, TRACE_WIDTH as BITWISE_TRACE_WIDTH},
-        hasher::{Digest, HASH_CYCLE_LEN, LINEAR_HASH, RETURN_STATE},
+        hasher::{HASH_CYCLE_LEN, LINEAR_HASH, RETURN_STATE},
         kernel_rom::TRACE_WIDTH as KERNEL_ROM_TRACE_WIDTH,
         memory::TRACE_WIDTH as MEMORY_TRACE_WIDTH,
     },
 };
-use vm_core::{mast::MastForest, Felt, PrimeCharacteristicRing, Program, ONE, ZERO};
+use miden_core::{Felt, ONE, Program, Word, ZERO, mast::MastForest};
 
 use crate::{
-    DefaultHost, ExecutionOptions, ExecutionTrace, Kernel, Operation, Process, StackInputs,
+    AdviceInputs, DefaultHost, ExecutionOptions, ExecutionTrace, Kernel, Operation, Process,
+    StackInputs,
 };
 
 type ChipletsTrace = [Vec<Felt>; CHIPLETS_WIDTH];
@@ -74,6 +75,7 @@ fn stacked_chiplet_trace() {
     let kernel = build_kernel();
     let (chiplets_trace, trace_len) = build_trace(&stack, ops, kernel);
     let memory_len = 1;
+    let ace_len = 0;
     let kernel_rom_len = 2;
 
     // Skip the hash of the span block generated while building the trace to check only the HPerm.
@@ -89,8 +91,9 @@ fn stacked_chiplet_trace() {
     let memory_end = bitwise_end + memory_len;
     validate_memory_trace(&chiplets_trace, bitwise_end, memory_end);
 
-    let kernel_rom_end = memory_end + kernel_rom_len;
-    validate_kernel_rom_trace(&chiplets_trace, memory_end, kernel_rom_end);
+    let ace_end = memory_end + ace_len;
+    let kernel_rom_end = memory_end + ace_len + kernel_rom_len;
+    validate_kernel_rom_trace(&chiplets_trace, ace_end, kernel_rom_end);
 
     // Validate that the trace was padded correctly.
     validate_padding(&chiplets_trace, kernel_rom_end, trace_len);
@@ -101,8 +104,8 @@ fn stacked_chiplet_trace() {
 
 /// Creates a kernel with two dummy procedures
 fn build_kernel() -> Kernel {
-    let proc_hash1: Digest = [ONE, ZERO, ONE, ZERO].into();
-    let proc_hash2: Digest = [ONE, ONE, ONE, ONE].into();
+    let proc_hash1 = Word::from([1_u32, 0, 1, 0]);
+    let proc_hash2 = Word::from([1_u32, 1, 1, 1]);
     Kernel::new(&[proc_hash1, proc_hash2]).unwrap()
 }
 
@@ -115,11 +118,12 @@ fn build_trace(
 ) -> (ChipletsTrace, usize) {
     let stack_inputs = StackInputs::try_from_ints(stack_inputs.iter().copied()).unwrap();
     let mut host = DefaultHost::default();
-    let mut process = Process::new(kernel, stack_inputs, ExecutionOptions::default());
+    let mut process =
+        Process::new(kernel, stack_inputs, AdviceInputs::default(), ExecutionOptions::default());
     let program = {
         let mut mast_forest = MastForest::new();
 
-        let basic_block_id = mast_forest.add_block(operations, None).unwrap();
+        let basic_block_id = mast_forest.add_block(operations, Vec::new()).unwrap();
         mast_forest.make_root(basic_block_id);
 
         Program::new(mast_forest.into(), basic_block_id)
@@ -143,6 +147,7 @@ fn build_trace(
 /// of the hasher trace.
 fn validate_hasher_trace(trace: &ChipletsTrace, start: usize, end: usize) {
     // The selectors should match the hasher selectors
+    #[allow(clippy::needless_range_loop)]
     for row in start..end {
         // The selectors should match the selectors for the hasher segment
         assert_eq!(ZERO, trace[0][row]);
@@ -214,7 +219,7 @@ fn validate_kernel_rom_trace(trace: &ChipletsTrace, start: usize, end: usize) {
         assert_eq!(ONE, trace[0][row]);
         assert_eq!(ONE, trace[1][row]);
         assert_eq!(ONE, trace[2][row]);
-        assert_eq!(ZERO, trace[3][row]);
+        assert_eq!(ONE, trace[3][row]);
 
         // the s0 column of kernel ROM must be set to ZERO as there were no kernel accesses
         assert_eq!(ZERO, trace[4][row]);
@@ -235,9 +240,10 @@ fn validate_padding(trace: &ChipletsTrace, start: usize, end: usize) {
         assert_eq!(ONE, trace[1][row]);
         assert_eq!(ONE, trace[2][row]);
         assert_eq!(ONE, trace[3][row]);
+        assert_eq!(ONE, trace[4][row]);
 
         // padding
-        trace.iter().skip(4).for_each(|column| {
+        trace.iter().skip(5).for_each(|column| {
             assert_eq!(ZERO, column[row]);
         });
     }

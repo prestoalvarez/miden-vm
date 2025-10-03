@@ -1,10 +1,13 @@
 use alloc::vec::Vec;
 
-use miden_crypto::hash::rpo::RpoDigest;
-use winter_utils::{ByteReader, ByteWriter, Deserializable, DeserializationError, Serializable};
-
 use super::{NodeDataOffset, basic_blocks::BasicBlockDataDecoder};
-use crate::mast::{BasicBlockNode, CallNode, JoinNode, LoopNode, MastNode, MastNodeId, SplitNode};
+use crate::{
+    mast::{
+        BasicBlockNode, CallNode, DynNode, ExternalNode, JoinNode, LoopNode, MastNode, MastNodeId,
+        SplitNode, Word, node::MastNodeExt,
+    },
+    utils::{ByteReader, ByteWriter, Deserializable, DeserializationError, Serializable},
+};
 
 // MAST NODE INFO
 // ================================================================================================
@@ -17,7 +20,7 @@ use crate::mast::{BasicBlockNode, CallNode, JoinNode, LoopNode, MastNode, MastNo
 #[derive(Debug)]
 pub struct MastNodeInfo {
     ty: MastNodeType,
-    digest: RpoDigest,
+    digest: Word,
 }
 
 impl MastNodeInfo {
@@ -76,9 +79,9 @@ impl MastNodeInfo {
                 let syscall = CallNode::new_syscall_unsafe(callee_id, self.digest);
                 Ok(MastNode::Call(syscall))
             },
-            MastNodeType::Dyn => Ok(MastNode::new_dyn()),
-            MastNodeType::Dyncall => Ok(MastNode::new_dyncall()),
-            MastNodeType::External => Ok(MastNode::new_external(self.digest)),
+            MastNodeType::Dyn => Ok(MastNode::Dyn(DynNode::new_dyn())),
+            MastNodeType::Dyncall => Ok(MastNode::Dyn(DynNode::new_dyncall())),
+            MastNodeType::External => Ok(MastNode::External(ExternalNode::new(self.digest))),
         }
     }
 }
@@ -95,7 +98,7 @@ impl Serializable for MastNodeInfo {
 impl Deserializable for MastNodeInfo {
     fn read_from<R: ByteReader>(source: &mut R) -> Result<Self, DeserializationError> {
         let ty = Deserializable::read_from(source)?;
-        let digest = RpoDigest::read_from(source)?;
+        let digest = Word::read_from(source)?;
 
         Ok(Self { ty, digest })
     }
@@ -231,13 +234,11 @@ impl MastNodeType {
     fn encode_u32_pair(left_value: u32, right_value: u32) -> u64 {
         assert!(
             left_value.leading_zeros() >= 2,
-            "MastNodeType::encode_u32_pair: left value doesn't fit in 30 bits: {}",
-            left_value
+            "MastNodeType::encode_u32_pair: left value doesn't fit in 30 bits: {left_value}",
         );
         assert!(
             right_value.leading_zeros() >= 2,
-            "MastNodeType::encode_u32_pair: right value doesn't fit in 30 bits: {}",
-            right_value
+            "MastNodeType::encode_u32_pair: right value doesn't fit in 30 bits: {right_value}",
         );
 
         ((left_value as u64) << 30) | (right_value as u64)

@@ -56,7 +56,7 @@ These components are connected via two buses:
 * The range-checker bus, which links stack and chiplets modules with the range-checker.
 * The chiplet bus, which links stack and the decoder with the chiplets module.
 
-A much more in-depth description of Miden VM design is available [here](https://0xpolygonmiden.github.io/miden-vm/design/main.html).
+A much more in-depth description of Miden VM design is available [here](https://0xMiden.github.io/miden-vm/design/main.html).
 
 ## Crate features
 Miden processor can be compiled with the following features:
@@ -68,4 +68,4 @@ Miden processor can be compiled with the following features:
 To compile with `no_std`, disable default features via `--no-default-features` flag.
 
 ## License
-This project is [MIT licensed](../LICENSE).
+This project is dual-licensed under the [MIT](http://opensource.org/licenses/MIT) and [Apache 2.0](https://opensource.org/license/apache-2-0) licenses.

@@ -1,4 +1,4 @@
-use vm_core::{ONE, Operation, ZERO};
+use miden_core::{ONE, Operation, ZERO};
 
 use super::{
     DECODER_TRACE_OFFSET, DEGREE_4_OPCODE_ENDS, DEGREE_4_OPCODE_STARTS, DEGREE_6_OPCODE_ENDS,
@@ -145,7 +145,7 @@ fn composite_flags() {
     // ------ no change 0 ---------------------------------------------------------------------
 
     let op_no_change_0 =
-        [Operation::MpVerify(0), Operation::Span, Operation::Halt, Operation::Emit(42)];
+        [Operation::MpVerify(ZERO), Operation::Span, Operation::Halt, Operation::Emit];
     for op in op_no_change_0 {
         // frame initialised with an op operation.
         let frame = generate_evaluation_frame(op.op_code().into());
@@ -169,7 +169,7 @@ fn composite_flags() {
         assert_eq!(op_flags.left_shift(), ZERO);
         assert_eq!(op_flags.top_binary(), ZERO);
 
-        if op == Operation::MpVerify(0) || op == Operation::Emit(42) {
+        if op == Operation::MpVerify(ZERO) || op == Operation::Emit {
             assert_eq!(op_flags.control_flow(), ZERO);
         } else if op == Operation::Span || op == Operation::Halt {
             assert_eq!(op_flags.control_flow(), ONE);

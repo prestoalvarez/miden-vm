@@ -1,16 +1,19 @@
 use core::fmt;
 
-use super::Felt;
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 mod decorators;
-pub use decorators::{
-    AssemblyOp, DebugOptions, Decorator, DecoratorIterator, DecoratorList, SignatureKind,
+pub use decorators::{AssemblyOp, DebugOptions, Decorator, DecoratorList};
+use opcode_constants::*;
+
+use crate::{
+    Felt,
+    utils::{ByteReader, ByteWriter, Deserializable, DeserializationError, Serializable},
 };
-use miden_crypto::{PrimeCharacteristicRing, PrimeField64};
 
 // OPERATIONS OP CODES
 // ================================================================================================
-use opcode_constants::*;
-use winter_utils::{ByteReader, ByteWriter, Deserializable, DeserializationError, Serializable};
 
 /// Opcode patterns have the following meanings:
 /// - 00xxxxx operations do not shift the stack; constraint degree can be up to 2.
@@ -24,104 +27,105 @@ use winter_utils::{ByteReader, ByteWriter, Deserializable, DeserializationError,
 ///   operations and some other operations requiring very high degree constraints.
 #[rustfmt::skip]
 pub(super) mod opcode_constants {
-    pub const OPCODE_NOOP: u8       = 0b0000_0000;
-    pub const OPCODE_EQZ: u8        = 0b0000_0001;
-    pub const OPCODE_NEG: u8        = 0b0000_0010;
-    pub const OPCODE_INV: u8        = 0b0000_0011;
-    pub const OPCODE_INCR: u8       = 0b0000_0100;
-    pub const OPCODE_NOT: u8        = 0b0000_0101;
-    pub const OPCODE_FMPADD: u8     = 0b0000_0110;
-    pub const OPCODE_MLOAD: u8      = 0b0000_0111;
-    pub const OPCODE_SWAP: u8       = 0b0000_1000;
-    pub const OPCODE_CALLER: u8     = 0b0000_1001;
-    pub const OPCODE_MOVUP2: u8     = 0b0000_1010;
-    pub const OPCODE_MOVDN2: u8     = 0b0000_1011;
-    pub const OPCODE_MOVUP3: u8     = 0b0000_1100;
-    pub const OPCODE_MOVDN3: u8     = 0b0000_1101;
-    pub const OPCODE_ADVPOPW: u8    = 0b0000_1110;
-    pub const OPCODE_EXPACC: u8     = 0b0000_1111;
+    pub const OPCODE_NOOP: u8           = 0b0000_0000;
+    pub const OPCODE_EQZ: u8            = 0b0000_0001;
+    pub const OPCODE_NEG: u8            = 0b0000_0010;
+    pub const OPCODE_INV: u8            = 0b0000_0011;
+    pub const OPCODE_INCR: u8           = 0b0000_0100;
+    pub const OPCODE_NOT: u8            = 0b0000_0101;
+    pub const OPCODE_FMPADD: u8         = 0b0000_0110;
+    pub const OPCODE_MLOAD: u8          = 0b0000_0111;
+    pub const OPCODE_SWAP: u8           = 0b0000_1000;
+    pub const OPCODE_CALLER: u8         = 0b0000_1001;
+    pub const OPCODE_MOVUP2: u8         = 0b0000_1010;
+    pub const OPCODE_MOVDN2: u8         = 0b0000_1011;
+    pub const OPCODE_MOVUP3: u8         = 0b0000_1100;
+    pub const OPCODE_MOVDN3: u8         = 0b0000_1101;
+    pub const OPCODE_ADVPOPW: u8        = 0b0000_1110;
+    pub const OPCODE_EXPACC: u8         = 0b0000_1111;
 
-    pub const OPCODE_MOVUP4: u8     = 0b0001_0000;
-    pub const OPCODE_MOVDN4: u8     = 0b0001_0001;
-    pub const OPCODE_MOVUP5: u8     = 0b0001_0010;
-    pub const OPCODE_MOVDN5: u8     = 0b0001_0011;
-    pub const OPCODE_MOVUP6: u8     = 0b0001_0100;
-    pub const OPCODE_MOVDN6: u8     = 0b0001_0101;
-    pub const OPCODE_MOVUP7: u8     = 0b0001_0110;
-    pub const OPCODE_MOVDN7: u8     = 0b0001_0111;
-    pub const OPCODE_SWAPW: u8      = 0b0001_1000;
-    pub const OPCODE_EXT2MUL: u8    = 0b0001_1001;
-    pub const OPCODE_MOVUP8: u8     = 0b0001_1010;
-    pub const OPCODE_MOVDN8: u8     = 0b0001_1011;
-    pub const OPCODE_SWAPW2: u8     = 0b0001_1100;
-    pub const OPCODE_SWAPW3: u8     = 0b0001_1101;
-    pub const OPCODE_SWAPDW: u8     = 0b0001_1110;
+    pub const OPCODE_MOVUP4: u8         = 0b0001_0000;
+    pub const OPCODE_MOVDN4: u8         = 0b0001_0001;
+    pub const OPCODE_MOVUP5: u8         = 0b0001_0010;
+    pub const OPCODE_MOVDN5: u8         = 0b0001_0011;
+    pub const OPCODE_MOVUP6: u8         = 0b0001_0100;
+    pub const OPCODE_MOVDN6: u8         = 0b0001_0101;
+    pub const OPCODE_MOVUP7: u8         = 0b0001_0110;
+    pub const OPCODE_MOVDN7: u8         = 0b0001_0111;
+    pub const OPCODE_SWAPW: u8          = 0b0001_1000;
+    pub const OPCODE_EXT2MUL: u8        = 0b0001_1001;
+    pub const OPCODE_MOVUP8: u8         = 0b0001_1010;
+    pub const OPCODE_MOVDN8: u8         = 0b0001_1011;
+    pub const OPCODE_SWAPW2: u8         = 0b0001_1100;
+    pub const OPCODE_SWAPW3: u8         = 0b0001_1101;
+    pub const OPCODE_SWAPDW: u8         = 0b0001_1110;
+    pub const OPCODE_EMIT: u8           = 0b0001_1111;
 
-    pub const OPCODE_ASSERT: u8     = 0b0010_0000;
-    pub const OPCODE_EQ: u8         = 0b0010_0001;
-    pub const OPCODE_ADD: u8        = 0b0010_0010;
-    pub const OPCODE_MUL: u8        = 0b0010_0011;
-    pub const OPCODE_AND: u8        = 0b0010_0100;
-    pub const OPCODE_OR: u8         = 0b0010_0101;
-    pub const OPCODE_U32AND: u8     = 0b0010_0110;
-    pub const OPCODE_U32XOR: u8     = 0b0010_0111;
-    pub const OPCODE_FRIE2F4: u8    = 0b0010_1000;
-    pub const OPCODE_DROP: u8       = 0b0010_1001;
-    pub const OPCODE_CSWAP: u8      = 0b0010_1010;
-    pub const OPCODE_CSWAPW: u8     = 0b0010_1011;
-    pub const OPCODE_MLOADW: u8     = 0b0010_1100;
-    pub const OPCODE_MSTORE: u8     = 0b0010_1101;
-    pub const OPCODE_MSTOREW: u8    = 0b0010_1110;
-    pub const OPCODE_FMPUPDATE: u8  = 0b0010_1111;
+    pub const OPCODE_ASSERT: u8         = 0b0010_0000;
+    pub const OPCODE_EQ: u8             = 0b0010_0001;
+    pub const OPCODE_ADD: u8            = 0b0010_0010;
+    pub const OPCODE_MUL: u8            = 0b0010_0011;
+    pub const OPCODE_AND: u8            = 0b0010_0100;
+    pub const OPCODE_OR: u8             = 0b0010_0101;
+    pub const OPCODE_U32AND: u8         = 0b0010_0110;
+    pub const OPCODE_U32XOR: u8         = 0b0010_0111;
+    pub const OPCODE_FRIE2F4: u8        = 0b0010_1000;
+    pub const OPCODE_DROP: u8           = 0b0010_1001;
+    pub const OPCODE_CSWAP: u8          = 0b0010_1010;
+    pub const OPCODE_CSWAPW: u8         = 0b0010_1011;
+    pub const OPCODE_MLOADW: u8         = 0b0010_1100;
+    pub const OPCODE_MSTORE: u8         = 0b0010_1101;
+    pub const OPCODE_MSTOREW: u8        = 0b0010_1110;
+    pub const OPCODE_FMPUPDATE: u8      = 0b0010_1111;
 
-    pub const OPCODE_PAD: u8        = 0b0011_0000;
-    pub const OPCODE_DUP0: u8       = 0b0011_0001;
-    pub const OPCODE_DUP1: u8       = 0b0011_0010;
-    pub const OPCODE_DUP2: u8       = 0b0011_0011;
-    pub const OPCODE_DUP3: u8       = 0b0011_0100;
-    pub const OPCODE_DUP4: u8       = 0b0011_0101;
-    pub const OPCODE_DUP5: u8       = 0b0011_0110;
-    pub const OPCODE_DUP6: u8       = 0b0011_0111;
-    pub const OPCODE_DUP7: u8       = 0b0011_1000;
-    pub const OPCODE_DUP9: u8       = 0b0011_1001;
-    pub const OPCODE_DUP11: u8      = 0b0011_1010;
-    pub const OPCODE_DUP13: u8      = 0b0011_1011;
-    pub const OPCODE_DUP15: u8      = 0b0011_1100;
-    pub const OPCODE_ADVPOP: u8     = 0b0011_1101;
-    pub const OPCODE_SDEPTH: u8     = 0b0011_1110;
-    pub const OPCODE_CLK: u8        = 0b0011_1111;
+    pub const OPCODE_PAD: u8            = 0b0011_0000;
+    pub const OPCODE_DUP0: u8           = 0b0011_0001;
+    pub const OPCODE_DUP1: u8           = 0b0011_0010;
+    pub const OPCODE_DUP2: u8           = 0b0011_0011;
+    pub const OPCODE_DUP3: u8           = 0b0011_0100;
+    pub const OPCODE_DUP4: u8           = 0b0011_0101;
+    pub const OPCODE_DUP5: u8           = 0b0011_0110;
+    pub const OPCODE_DUP6: u8           = 0b0011_0111;
+    pub const OPCODE_DUP7: u8           = 0b0011_1000;
+    pub const OPCODE_DUP9: u8           = 0b0011_1001;
+    pub const OPCODE_DUP11: u8          = 0b0011_1010;
+    pub const OPCODE_DUP13: u8          = 0b0011_1011;
+    pub const OPCODE_DUP15: u8          = 0b0011_1100;
+    pub const OPCODE_ADVPOP: u8         = 0b0011_1101;
+    pub const OPCODE_SDEPTH: u8         = 0b0011_1110;
+    pub const OPCODE_CLK: u8            = 0b0011_1111;
 
-    pub const OPCODE_U32ADD: u8     = 0b0100_0000;
-    pub const OPCODE_U32SUB: u8     = 0b0100_0010;
-    pub const OPCODE_U32MUL: u8     = 0b0100_0100;
-    pub const OPCODE_U32DIV: u8     = 0b0100_0110;
-    pub const OPCODE_U32SPLIT: u8   = 0b0100_1000;
-    pub const OPCODE_U32ASSERT2: u8 = 0b0100_1010;
-    pub const OPCODE_U32ADD3: u8    = 0b0100_1100;
-    pub const OPCODE_U32MADD: u8    = 0b0100_1110;
+    pub const OPCODE_U32ADD: u8         = 0b0100_0000;
+    pub const OPCODE_U32SUB: u8         = 0b0100_0010;
+    pub const OPCODE_U32MUL: u8         = 0b0100_0100;
+    pub const OPCODE_U32DIV: u8         = 0b0100_0110;
+    pub const OPCODE_U32SPLIT: u8       = 0b0100_1000;
+    pub const OPCODE_U32ASSERT2: u8     = 0b0100_1010;
+    pub const OPCODE_U32ADD3: u8        = 0b0100_1100;
+    pub const OPCODE_U32MADD: u8        = 0b0100_1110;
 
-    pub const OPCODE_HPERM: u8      = 0b0101_0000;
-    pub const OPCODE_MPVERIFY: u8   = 0b0101_0001;
-    pub const OPCODE_PIPE: u8       = 0b0101_0010;
-    pub const OPCODE_MSTREAM: u8    = 0b0101_0011;
-    pub const OPCODE_SPLIT: u8      = 0b0101_0100;
-    pub const OPCODE_LOOP: u8       = 0b0101_0101;
-    pub const OPCODE_SPAN: u8       = 0b0101_0110;
-    pub const OPCODE_JOIN: u8       = 0b0101_0111;
-    pub const OPCODE_DYN: u8        = 0b0101_1000;
-    pub const OPCODE_HORNEREXT: u8  = 0b0101_1001;
-    pub const OPCODE_EMIT: u8       = 0b0101_1010;
-    pub const OPCODE_PUSH: u8       = 0b0101_1011;
-    pub const OPCODE_DYNCALL: u8    = 0b0101_1100;
+    pub const OPCODE_HPERM: u8          = 0b0101_0000;
+    pub const OPCODE_MPVERIFY: u8       = 0b0101_0001;
+    pub const OPCODE_PIPE: u8           = 0b0101_0010;
+    pub const OPCODE_MSTREAM: u8        = 0b0101_0011;
+    pub const OPCODE_SPLIT: u8          = 0b0101_0100;
+    pub const OPCODE_LOOP: u8           = 0b0101_0101;
+    pub const OPCODE_SPAN: u8           = 0b0101_0110;
+    pub const OPCODE_JOIN: u8           = 0b0101_0111;
+    pub const OPCODE_DYN: u8            = 0b0101_1000;
+    pub const OPCODE_HORNEREXT: u8      = 0b0101_1001;
+    pub const OPCODE_PUSH: u8           = 0b0101_1011;
+    pub const OPCODE_DYNCALL: u8        = 0b0101_1100;
+    pub const OPCODE_EVALCIRCUIT: u8    = 0b0101_1101;
 
-    pub const OPCODE_MRUPDATE: u8   = 0b0110_0000;
-    pub const OPCODE_HORNERBASE: u8 = 0b0110_0100;
-    pub const OPCODE_SYSCALL: u8    = 0b0110_1000;
-    pub const OPCODE_CALL: u8       = 0b0110_1100;
-    pub const OPCODE_END: u8        = 0b0111_0000;
-    pub const OPCODE_REPEAT: u8     = 0b0111_0100;
-    pub const OPCODE_RESPAN: u8     = 0b0111_1000;
-    pub const OPCODE_HALT: u8       = 0b0111_1100;
+    pub const OPCODE_MRUPDATE: u8       = 0b0110_0000;
+    pub const OPCODE_HORNERBASE: u8     = 0b0110_0100;
+    pub const OPCODE_SYSCALL: u8        = 0b0110_1000;
+    pub const OPCODE_CALL: u8           = 0b0110_1100;
+    pub const OPCODE_END: u8            = 0b0111_0000;
+    pub const OPCODE_REPEAT: u8         = 0b0111_0100;
+    pub const OPCODE_RESPAN: u8         = 0b0111_1000;
+    pub const OPCODE_HALT: u8           = 0b0111_1100;
 }
 
 // OPERATIONS
@@ -129,6 +133,7 @@ pub(super) mod opcode_constants {
 
 /// A set of native VM operations which take exactly one cycle to execute.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[repr(u8)]
 pub enum Operation {
     // ----- system operations -------------------------------------------------------------------
@@ -139,7 +144,7 @@ pub enum Operation {
     ///
     /// The internal value specifies an error code associated with the error in case when the
     /// execution fails.
-    Assert(u32) = OPCODE_ASSERT,
+    Assert(Felt) = OPCODE_ASSERT,
 
     /// Pops an element off the stack, adds the current value of the `fmp` register to it, and
     /// pushes the result back onto the stack.
@@ -160,15 +165,20 @@ pub enum Operation {
     /// instruction.
     Clk = OPCODE_CLK,
 
-    /// Emits an event id (`u32` value) to the host.
+    /// Emits an event to the host.
     ///
-    /// We interpret the event id as follows:
-    /// - 16 most significant bits identify the event source,
-    /// - 16 least significant bits identify the actual event.
+    /// Semantics:
+    /// - Reads the event id from the top of the stack (as a `Felt`) without consuming it; the
+    ///   caller is responsible for pushing and later dropping the id.
+    /// - User-defined events are conventionally derived from strings via
+    ///   `hash_string_to_word(name)[0]` (Blake3-based) and may be emitted via immediate forms in
+    ///   assembly (`emit.event("...")` or `emit.CONST` where `CONST=event("...")`).
+    /// - System events are still identified by specific 32-bit codes; the VM attempts to interpret
+    ///   the stack `Felt` as `u32` to dispatch known system events, and otherwise forwards the
+    ///   event to the host.
     ///
-    /// Similar to Noop, this operation does not change the state of user stack. The immediate
-    /// value affects the program MAST root computation.
-    Emit(u32) = OPCODE_EMIT,
+    /// This operation does not change the state of the user stack aside from reading the value.
+    Emit = OPCODE_EMIT,
 
     // ----- flow control operations -------------------------------------------------------------
     /// Marks the beginning of a join block.
@@ -273,6 +283,9 @@ pub enum Operation {
     /// Computes the product of two elements in the extension field of degree 2 and pushes the
     /// result back onto the stack as the third and fourth elements. Pushes 0 onto the stack as
     /// the first and second elements.
+    ///
+    /// The extension field is defined as 𝔽ₚ\[x\]/(x² - x + 2), i.e. using the
+    /// irreducible quadratic polynomial x² - x + 2 over the base field.
     Ext2Mul = OPCODE_EXT2MUL,
 
     // ----- u32 operations ----------------------------------------------------------------------
@@ -292,7 +305,7 @@ pub enum Operation {
     ///
     /// The internal value specifies an error code associated with the error in case when the
     /// assertion fails.
-    U32assert2(u32) = OPCODE_U32ASSERT2,
+    U32assert2(Felt) = OPCODE_U32ASSERT2,
 
     /// Pops three elements off the stack, adds them together, and splits the result into upper
     /// and lower 32-bit values. Then pushes the result back onto the stack.
@@ -535,7 +548,7 @@ pub enum Operation {
     ///
     /// The internal value specifies an error code associated with the error in case when the
     /// assertion fails.
-    MpVerify(u32) = OPCODE_MPVERIFY,
+    MpVerify(Felt) = OPCODE_MPVERIFY,
 
     /// Computes a new root of a Merkle tree where a node at the specified position is updated to
     /// the specified value.
@@ -597,6 +610,10 @@ pub enum Operation {
     ///
     /// P(X) := c3 * X^3 + c2 * X^2 + c1 * X + c0
     HornerExt = OPCODE_HORNEREXT,
+
+    /// Evaluates an arithmetic circuit given a pointer to its description in memory, the number
+    /// of arithmetic gates, and the sum of the input and constant gates.
+    EvalCircuit = OPCODE_EVALCIRCUIT,
 }
 
 impl Operation {
@@ -614,10 +631,11 @@ impl Operation {
     }
 
     /// Returns an immediate value carried by this operation.
+    // Proptest generators for operations in crate::mast::node::basic_block_node::tests discriminate
+    // on this flag, please update them when you modify the semantics of this method.
     pub fn imm_value(&self) -> Option<Felt> {
         match *self {
             Self::Push(imm) => Some(imm),
-            Self::Emit(imm) => Some(Felt::from_u32(imm)),
             _ => None,
         }
     }
@@ -766,15 +784,18 @@ impl fmt::Display for Operation {
             Self::MStream => write!(f, "mstream"),
             Self::Pipe => write!(f, "pipe"),
 
-            Self::Emit(value) => write!(f, "emit({value})"),
+            Self::Emit => write!(f, "emit"),
 
             // ----- cryptographic operations -----------------------------------------------------
             Self::HPerm => write!(f, "hperm"),
             Self::MpVerify(err_code) => write!(f, "mpverify({err_code})"),
             Self::MrUpdate => write!(f, "mrupdate"),
+
+            // ----- STARK proof verification -----------------------------------------------------
             Self::FriE2F4 => write!(f, "frie2f4"),
             Self::HornerBase => write!(f, "horner_eval_base"),
             Self::HornerExt => write!(f, "horner_eval_ext"),
+            Self::EvalCircuit => write!(f, "eval_circuit"),
         }
     }
 }
@@ -790,8 +811,7 @@ impl Serializable for Operation {
             | Operation::U32assert2(err_code) => {
                 err_code.write_into(target);
             },
-            Operation::Push(value) => (*value).as_canonical_u64().write_into(target),
-            Operation::Emit(value) => value.write_into(target),
+            Operation::Push(value) => value.as_int().write_into(target),
 
             // Note: we explicitly write out all the operations so that whenever we make a
             // modification to the `Operation` enum, we get a compile error here. This
@@ -854,6 +874,7 @@ impl Serializable for Operation {
             | Operation::SwapW2
             | Operation::SwapW3
             | Operation::SwapDW
+            | Operation::Emit
             | Operation::MovUp2
             | Operation::MovUp3
             | Operation::MovUp4
@@ -882,7 +903,8 @@ impl Serializable for Operation {
             | Operation::MrUpdate
             | Operation::FriE2F4
             | Operation::HornerBase
-            | Operation::HornerExt => (),
+            | Operation::HornerExt
+            | Operation::EvalCircuit => (),
         }
     }
 }
@@ -924,11 +946,9 @@ impl Deserializable for Operation {
             OPCODE_SWAPW2 => Self::SwapW2,
             OPCODE_SWAPW3 => Self::SwapW3,
             OPCODE_SWAPDW => Self::SwapDW,
+            OPCODE_EMIT => Self::Emit,
 
-            OPCODE_ASSERT => {
-                let err_code = source.read_u32()?;
-                Self::Assert(err_code)
-            },
+            OPCODE_ASSERT => Self::Assert(Felt::read_from(source)?),
             OPCODE_EQ => Self::Eq,
             OPCODE_ADD => Self::Add,
             OPCODE_MUL => Self::Mul,
@@ -967,20 +987,12 @@ impl Deserializable for Operation {
             OPCODE_U32MUL => Self::U32mul,
             OPCODE_U32DIV => Self::U32div,
             OPCODE_U32SPLIT => Self::U32split,
-            OPCODE_U32ASSERT2 => {
-                let err_code = source.read_u32()?;
-
-                Self::U32assert2(err_code)
-            },
+            OPCODE_U32ASSERT2 => Self::U32assert2(Felt::read_from(source)?),
             OPCODE_U32ADD3 => Self::U32add3,
             OPCODE_U32MADD => Self::U32madd,
 
             OPCODE_HPERM => Self::HPerm,
-            OPCODE_MPVERIFY => {
-                let err_code = source.read_u32()?;
-
-                Self::MpVerify(err_code)
-            },
+            OPCODE_MPVERIFY => Self::MpVerify(Felt::read_from(source)?),
             OPCODE_PIPE => Self::Pipe,
             OPCODE_MSTREAM => Self::MStream,
             OPCODE_SPLIT => Self::Split,
@@ -991,25 +1003,10 @@ impl Deserializable for Operation {
             OPCODE_DYNCALL => Self::Dyncall,
             OPCODE_HORNERBASE => Self::HornerBase,
             OPCODE_HORNEREXT => Self::HornerExt,
+            OPCODE_EVALCIRCUIT => Self::EvalCircuit,
 
             OPCODE_MRUPDATE => Self::MrUpdate,
-            OPCODE_PUSH => {
-                let value_u64 = source.read_u64()?;
-                // TODO(Al)
-                //let value_felt = Felt::try_from(value_u64).map_err(|_| {
-                //    DeserializationError::InvalidValue(format!(
-                //        "Operation associated data doesn't fit in a field element: {value_u64}"
-                //    ))
-                //})?;
-                let value_felt = Felt::from_u64(value_u64);
-
-                Self::Push(value_felt)
-            },
-            OPCODE_EMIT => {
-                let value = source.read_u32()?;
-
-                Self::Emit(value)
-            },
+            OPCODE_PUSH => Self::Push(Felt::read_from(source)?),
             OPCODE_SYSCALL => Self::SysCall,
             OPCODE_CALL => Self::Call,
             OPCODE_END => Self::End,

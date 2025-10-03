@@ -1,4 +1,4 @@
-use vm_core::{Felt, FieldElement, ONE, Operation, ZERO};
+use miden_core::{Felt, FieldElement, ONE, Operation, ZERO};
 
 use super::{B0_COL_IDX, EvaluationFrame};
 use crate::{
@@ -292,7 +292,7 @@ impl<E: FieldElement> OpFlags<E> {
             + degree5_op_flags[1] // MPVERIFY
             + degree5_op_flags[6] // SPAN
             + degree5_op_flags[7] // JOIN
-            + degree5_op_flags[10] // EMIT
+            + degree7_op_flags[31] // EMIT
             + degree4_op_flags[6] // RESPAN
             + degree4_op_flags[7] // HALT
             + degree4_op_flags[3] // CALL
@@ -638,7 +638,7 @@ impl<E: FieldElement> OpFlags<E> {
     /// Operation Flag of ASSERT operation.
     #[inline(always)]
     pub fn assert(&self) -> E {
-        self.degree7_op_flags[get_op_index(Operation::Assert(0).op_code())]
+        self.degree7_op_flags[get_op_index(Operation::Assert(ZERO).op_code())]
     }
 
     /// Operation Flag of EQ operation.
@@ -852,7 +852,7 @@ impl<E: FieldElement> OpFlags<E> {
     /// Operation Flag of U32ASSERT2 operation.
     #[inline(always)]
     pub fn u32assert2(&self) -> E {
-        self.degree6_op_flags[get_op_index(Operation::U32assert2(0).op_code())]
+        self.degree6_op_flags[get_op_index(Operation::U32assert2(ZERO).op_code())]
     }
 
     /// Operation Flag of U32ADD3 operation.
@@ -878,7 +878,7 @@ impl<E: FieldElement> OpFlags<E> {
     /// Operation Flag of MPVERIFY operation.
     #[inline(always)]
     pub fn mpverify(&self) -> E {
-        self.degree5_op_flags[get_op_index(Operation::MpVerify(0).op_code())]
+        self.degree5_op_flags[get_op_index(Operation::MpVerify(ZERO).op_code())]
     }
 
     /// Operation Flag of SPLIT operation.

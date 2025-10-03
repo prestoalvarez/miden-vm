@@ -50,9 +50,9 @@ impl ProvingOptions {
         16,
         FieldExtension::Quadratic,
         4,
-        7,
+        127,
         BatchingMethod::Algebraic,
-        BatchingMethod::Algebraic,
+        BatchingMethod::Horner,
     );
 
     /// Standard proof parameters for 128-bit conjectured security in recursive context.
@@ -63,8 +63,8 @@ impl ProvingOptions {
         FieldExtension::Cubic,
         4,
         7,
-        BatchingMethod::Algebraic,
-        BatchingMethod::Algebraic,
+        BatchingMethod::Horner,
+        BatchingMethod::Horner,
     );
 
     // CONSTRUCTORS
@@ -88,71 +88,47 @@ impl ProvingOptions {
             fri_folding_factor,
             fri_remainder_max_degree,
             BatchingMethod::Algebraic,
-            BatchingMethod::Algebraic,
+            BatchingMethod::Horner,
         );
         let exec_options = ExecutionOptions::default();
         Self { exec_options, proof_options, hash_fn }
     }
 
-    /// Creates a new preset instance of [ProvingOptions] targeting 96-bit security level.
+    /// Creates a new preset instance of [ProvingOptions] targeting 96-bit security level, given
+    /// a choice of a hash function.
     ///
-    /// If `recursive` flag is set to true, proofs will be generated using an arithmetization-
-    /// friendly hash function (RPO). Such proofs are well-suited for recursive proof verification,
-    /// but may take significantly longer to generate.
-    pub fn with_96_bit_security(recursive: bool) -> Self {
-        if recursive {
-            Self {
-                exec_options: ExecutionOptions::default(),
-                proof_options: Self::RECURSIVE_96_BITS,
-                hash_fn: HashFunction::Rpo256,
-            }
-        } else {
-            Self {
-                exec_options: ExecutionOptions::default(),
-                proof_options: Self::REGULAR_96_BITS,
-                hash_fn: HashFunction::Blake3_256,
-            }
-        }
-    }
-
-    /// Creates a new preset instance of [ProvingOptions] targeting 96-bit security level,
-    /// using the RPX hashing function.
-    pub fn with_96_bit_security_rpx() -> Self {
+    /// If the hash function is arithmetization-friendly then proofs will be generated using
+    /// settings that are well-suited for recursive verification.
+    pub fn with_96_bit_security(hash_fn: HashFunction) -> Self {
+        let proof_options = match hash_fn {
+            HashFunction::Blake3_192 | HashFunction::Blake3_256 => Self::REGULAR_96_BITS,
+            HashFunction::Rpo256 | HashFunction::Rpx256 | HashFunction::Poseidon2 => {
+                Self::RECURSIVE_96_BITS
+            },
+        };
         Self {
             exec_options: ExecutionOptions::default(),
-            proof_options: Self::RECURSIVE_96_BITS,
-            hash_fn: HashFunction::Rpx256,
+            proof_options,
+            hash_fn,
         }
     }
 
-    /// Creates a new preset instance of [ProvingOptions] targeting 128-bit security level.
+    /// Creates a new preset instance of [ProvingOptions] targeting 128-bit security level, given
+    /// a choice of a hash function, in the non-recursive setting.
     ///
-    /// If `recursive` flag is set to true, proofs will be generated using an arithmetization-
-    /// friendly hash function (RPO). Such proofs are well-suited for recursive proof verification,
-    /// but may take significantly longer to generate.
-    pub fn with_128_bit_security(recursive: bool) -> Self {
-        if recursive {
-            Self {
-                exec_options: ExecutionOptions::default(),
-                proof_options: Self::RECURSIVE_128_BITS,
-                hash_fn: HashFunction::Rpo256,
-            }
-        } else {
-            Self {
-                exec_options: ExecutionOptions::default(),
-                proof_options: Self::REGULAR_128_BITS,
-                hash_fn: HashFunction::Blake3_256,
-            }
-        }
-    }
-
-    /// Creates a new preset instance of [ProvingOptions] targeting 128-bit security level,
-    /// using the RPX hashing function.
-    pub fn with_128_bit_security_rpx() -> Self {
+    /// If the hash function is arithmetization-friendly then proofs will be generated using
+    /// settings that are well-suited for recursive verification.
+    pub fn with_128_bit_security(hash_fn: HashFunction) -> Self {
+        let proof_options = match hash_fn {
+            HashFunction::Blake3_192 | HashFunction::Blake3_256 => Self::REGULAR_128_BITS,
+            HashFunction::Rpo256 | HashFunction::Rpx256 | HashFunction::Poseidon2 => {
+                Self::RECURSIVE_128_BITS
+            },
+        };
         Self {
             exec_options: ExecutionOptions::default(),
-            proof_options: Self::RECURSIVE_128_BITS,
-            hash_fn: HashFunction::Rpx256,
+            proof_options,
+            hash_fn,
         }
     }
 
@@ -181,7 +157,7 @@ impl ProvingOptions {
 
 impl Default for ProvingOptions {
     fn default() -> Self {
-        Self::with_96_bit_security(false)
+        Self::with_96_bit_security(HashFunction::Blake3_192)
     }
 }
 
@@ -209,7 +185,7 @@ pub struct ExecutionOptions {
 impl Default for ExecutionOptions {
     fn default() -> Self {
         ExecutionOptions {
-            max_cycles: u32::MAX,
+            max_cycles: Self::MAX_CYCLES,
             expected_cycles: MIN_TRACE_LEN as u32,
             enable_tracing: false,
             enable_debugging: false,
@@ -218,29 +194,49 @@ impl Default for ExecutionOptions {
 }
 
 impl ExecutionOptions {
+    // CONSTANTS
+    // --------------------------------------------------------------------------------------------
+
+    /// The maximum number of VM cycles a program is allowed to take.
+    pub const MAX_CYCLES: u32 = 1 << 29;
+
     // CONSTRUCTOR
     // --------------------------------------------------------------------------------------------
 
     /// Creates a new instance of [ExecutionOptions] from the specified parameters.
     ///
-    /// If the `max_cycles` is `None` the maximum number of cycles will be set to `u32::MAX`
+    /// If the `max_cycles` is `None` the maximum number of cycles will be set to 2^29.
     pub fn new(
         max_cycles: Option<u32>,
         expected_cycles: u32,
         enable_tracing: bool,
         enable_debugging: bool,
     ) -> Result<Self, ExecutionOptionsError> {
-        let max_cycles = max_cycles.unwrap_or(u32::MAX);
-        if max_cycles < MIN_TRACE_LEN as u32 {
-            return Err(ExecutionOptionsError::MaxCycleNumTooSmall(expected_cycles));
-        }
+        // Validate max cycles.
+        let max_cycles = if let Some(max_cycles) = max_cycles {
+            if max_cycles > Self::MAX_CYCLES {
+                return Err(ExecutionOptionsError::MaxCycleNumTooBig {
+                    max_cycles,
+                    max_cycles_limit: Self::MAX_CYCLES,
+                });
+            }
+            if max_cycles < MIN_TRACE_LEN as u32 {
+                return Err(ExecutionOptionsError::MaxCycleNumTooSmall {
+                    max_cycles,
+                    min_cycles_limit: MIN_TRACE_LEN,
+                });
+            }
+            max_cycles
+        } else {
+            Self::MAX_CYCLES
+        };
+        // Validate expected cycles.
         if max_cycles < expected_cycles {
             return Err(ExecutionOptionsError::ExpectedCyclesTooBig {
                 max_cycles,
                 expected_cycles,
             });
         }
-
         // Round up the expected number of cycles to the next power of two. If it is smaller than
         // MIN_TRACE_LEN -- pad expected number to it.
         let expected_cycles = expected_cycles.next_power_of_two().max(MIN_TRACE_LEN as u32);
@@ -259,14 +255,15 @@ impl ExecutionOptions {
         self
     }
 
-    /// Enables execution of programs in debug mode.
+    /// Enables execution of programs in debug mode when the `enable_debugging` flag is set to true;
+    /// otherwise, debug mode is disabled.
     ///
     /// In debug mode the VM does the following:
     /// - Executes `debug` instructions (these are ignored in regular mode).
     /// - Records additional info about program execution (e.g., keeps track of stack state at every
     ///   cycle of the VM) which enables stepping through the program forward and backward.
-    pub fn with_debugging(mut self) -> Self {
-        self.enable_debugging = true;
+    pub fn with_debugging(mut self, enable_debugging: bool) -> Self {
+        self.enable_debugging = enable_debugging;
         self
     }
 

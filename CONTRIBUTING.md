@@ -2,14 +2,14 @@
 
 #### First off, thanks for taking the time to contribute!
 
-You can find a detailed explanation of main project concepts in [docs](https://0xpolygonmiden.github.io/miden-vm/).
+You can find a detailed explanation of main project concepts in [docs](https://0xMiden.github.io/miden-vm/).
 
 We want to make contributing to this project as easy and transparent as possible, whether it's:
 
-- Reporting a [bug](https://github.com/0xPolygonMiden/miden-vm/issues/new)
-- Taking part in [discussions](https://github.com/0xPolygonMiden/miden-vm/discussions)
-- Submitting a [fix](https://github.com/0xPolygonMiden/miden-vm/pulls)
-- Proposing new [features](https://github.com/0xPolygonMiden/miden-vm/issues/new)
+- Reporting a [bug](https://github.com/0xMiden/miden-vm/issues/new)
+- Taking part in [discussions](https://github.com/0xMiden/miden-vm/discussions)
+- Submitting a [fix](https://github.com/0xMiden/miden-vm/pulls)
+- Proposing new [features](https://github.com/0xMiden/miden-vm/issues/new)
 
 &nbsp;
 
@@ -44,6 +44,10 @@ i.e. this branches state:
 
 
   More about rebase [here](https://git-scm.com/docs/git-rebase) and [here](https://www.atlassian.com/git/tutorials/rewriting-history/git-rebase#:~:text=What%20is%20git%20rebase%3F,of%20a%20feature%20branching%20workflow.)
+
+### Signing commits
+
+We require all commits to be [signed](https://docs.github.com/en/authentication/managing-commit-signature-verification/about-commit-signature-verification#ssh-commit-signature-verification).
 
 
 ### Commit messages
@@ -86,11 +90,12 @@ We use [semver](https://semver.org/) naming convention.
 
 ## Pre-PR checklist
 1. Repo forked and branch created from `next` according to the naming convention.
-2. Commit messages and code style follow conventions.
-3. Tests added for new functionality.
-4. Documentation/comments updated for all changes according to our documentation convention.
-5. Clippy and Rustfmt linting passed.
-6. New branch rebased from `next`.
+2. Every commit is [signed](https://docs.github.com/en/authentication/managing-commit-signature-verification/about-commit-signature-verification#ssh-commit-signature-verification).
+3. Commit messages and code style follow conventions.
+4. Tests added for new functionality.
+5. Documentation/comments updated for all changes according to our documentation convention.
+6. Clippy and Rustfmt linting passed.
+7. New branch rebased from `next`.
 
 &nbsp;
 
@@ -107,4 +112,4 @@ We use [semver](https://semver.org/) naming convention.
 &nbsp;
 
 ## Any contributions you make will be under the MIT Software License
-In short, when you submit code changes, your submissions are understood to be under the same [MIT License](http://choosealicense.com/licenses/mit/) that covers the project. Feel free to contact the maintainers if that's a concern.
+In short, when you submit code changes, your submissions are understood to be under the dual [MIT](./LICENSE-MIT) and [Apache 2.0](./LICENSE-APACHE) license that covers the project. Feel free to contact the maintainers if that's a concern.

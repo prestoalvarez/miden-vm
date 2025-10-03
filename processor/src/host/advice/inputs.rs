@@ -1,11 +1,8 @@
 use alloc::vec::Vec;
 
-use vm_core::{
-    AdviceMap, Felt, PrimeCharacteristicRing,
-    crypto::{
-        hash::RpoDigest,
-        merkle::{InnerNodeInfo, MerkleStore},
-    },
+use miden_core::{
+    AdviceMap, Felt, Word,
+    crypto::merkle::MerkleStore,
     errors::InputError,
     utils::{ByteReader, ByteWriter, Deserializable, DeserializationError, Serializable},
 };
@@ -24,12 +21,11 @@ use vm_core::{
 /// 2. Key-mapped element lists which can be pushed onto the advice stack.
 /// 3. Merkle store, which is used to provide nondeterministic inputs for instructions that operates
 ///    with Merkle trees.
-#[cfg(not(feature = "testing"))]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct AdviceInputs {
-    stack: Vec<Felt>,
-    map: AdviceMap,
-    store: MerkleStore,
+    pub stack: Vec<Felt>,
+    pub map: AdviceMap,
+    pub store: MerkleStore,
 }
 
 impl AdviceInputs {
@@ -65,7 +61,7 @@ impl AdviceInputs {
     /// Extends the map of values with the given argument, replacing previously inserted items.
     pub fn with_map<I>(mut self, iter: I) -> Self
     where
-        I: IntoIterator<Item = (RpoDigest, Vec<Felt>)>,
+        I: IntoIterator<Item = (Word, Vec<Felt>)>,
     {
         self.map.extend(iter);
         self
@@ -80,63 +76,11 @@ impl AdviceInputs {
     // PUBLIC MUTATORS
     // --------------------------------------------------------------------------------------------
 
-    /// Extends the stack with the given elements.
-    pub fn extend_stack<I>(&mut self, iter: I)
-    where
-        I: IntoIterator<Item = Felt>,
-    {
-        self.stack.extend(iter);
-    }
-
-    /// Extends the map of values with the given argument, replacing previously inserted items.
-    pub fn extend_map<I>(&mut self, iter: I)
-    where
-        I: IntoIterator<Item = (RpoDigest, Vec<Felt>)>,
-    {
-        self.map.extend(iter);
-    }
-
-    /// Extends the [MerkleStore] with the given nodes.
-    pub fn extend_merkle_store<I>(&mut self, iter: I)
-    where
-        I: Iterator<Item = InnerNodeInfo>,
-    {
-        self.store.extend(iter);
-    }
-
     /// Extends the contents of this instance with the contents of the other instance.
     pub fn extend(&mut self, other: Self) {
         self.stack.extend(other.stack);
         self.map.extend(other.map);
         self.store.extend(other.store.inner_nodes());
-    }
-
-    // PUBLIC ACCESSORS
-    // --------------------------------------------------------------------------------------------
-
-    /// Returns a reference to the advice stack.
-    pub fn stack(&self) -> &[Felt] {
-        &self.stack
-    }
-
-    /// Fetch a values set mapped by the given key.
-    pub fn mapped_values(&self, key: &RpoDigest) -> Option<&[Felt]> {
-        self.map.get(key)
-    }
-
-    /// Returns the underlying [MerkleStore].
-    pub const fn merkle_store(&self) -> &MerkleStore {
-        &self.store
-    }
-
-    // DESTRUCTORS
-    // --------------------------------------------------------------------------------------------
-
-    /// Decomposes these `[Self]` into their raw components.
-    #[allow(clippy::type_complexity)]
-    pub(crate) fn into_parts(self) -> (Vec<Felt>, AdviceMap, MerkleStore) {
-        let Self { stack, map, store } = self;
-        (stack, map, store)
     }
 }
 
@@ -161,17 +105,6 @@ impl Deserializable for AdviceInputs {
         Ok(Self { stack, map, store }) */
         todo!()
     }
-}
-
-// TESTING
-// ================================================================================================
-
-#[cfg(feature = "testing")]
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct AdviceInputs {
-    pub stack: Vec<Felt>,
-    pub map: AdviceMap,
-    pub store: MerkleStore,
 }
 
 // TESTS

@@ -1,9 +1,10 @@
 # Miden Virtual Machine
 
-[![LICENSE](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/0xPolygonMiden/miden-vm/blob/main/LICENSE)
-[![Test](https://github.com/0xPolygonMiden/miden-vm/actions/workflows/test.yml/badge.svg)](https://github.com/0xPolygonMiden/miden-vm/actions/workflows/test.yml)
-[![Build](https://github.com/0xPolygonMiden/miden-vm/actions/workflows/build.yml/badge.svg)](https://github.com/0xPolygonMiden/miden-vm/actions/workflows/build.yml)
-[![RUST_VERSION](https://img.shields.io/badge/rustc-1.85+-lightgray.svg)](https://www.rust-lang.org/tools/install)
+[![LICENSE](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/0xMiden/miden-vm/blob/main/LICENSE-MIT)
+[![LICENSE](https://img.shields.io/badge/license-APACHE-blue.svg)](https://github.com/0xMiden/miden-vm/blob/main/LICENSE-APACHE)
+[![Test](https://github.com/0xMiden/miden-vm/actions/workflows/test.yml/badge.svg)](https://github.com/0xMiden/miden-vm/actions/workflows/test.yml)
+[![Build](https://github.com/0xMiden/miden-vm/actions/workflows/build.yml/badge.svg)](https://github.com/0xMiden/miden-vm/actions/workflows/build.yml)
+[![RUST_VERSION](https://img.shields.io/badge/rustc-1.90+-lightgray.svg)](https://www.rust-lang.org/tools/install)
 [![Crates.io](https://img.shields.io/crates/v/miden-vm)](https://crates.io/crates/miden-vm)
 
 A STARK-based virtual machine.
@@ -16,15 +17,15 @@ A STARK-based virtual machine.
 
 Miden VM is a zero-knowledge virtual machine written in Rust. For any program executed on Miden VM, a STARK-based proof of execution is automatically generated. This proof can then be used by anyone to verify that the program was executed correctly without the need for re-executing the program or even knowing the contents of the program.
 
-- If you'd like to learn more about how Miden VM works, check out the [documentation](https://0xpolygonmiden.github.io/miden-vm/).
-- If you'd like to start using Miden VM, check out the [miden](miden) crate.
+- If you'd like to learn more about how Miden VM works, check out the [documentation](https://0xMiden.github.io/miden-vm/).
+- If you'd like to start using Miden VM, check out the [miden-vm](./miden-vm) crate.
 - If you'd like to learn more about STARKs, check out the [references](#references) section.
 
 ### Status and features
 
-Miden VM is currently on release v0.14. In this release, most of the core features of the VM have been stabilized, and most of the STARK proof generation has been implemented. While we expect to keep making changes to the VM internals, the external interfaces should remain relatively stable, and we will do our best to minimize the amount of breaking changes going forward.
+Miden VM is currently on release v0.19. In this release, most of the core features of the VM have been stabilized, and most of the STARK proof generation has been implemented. While we expect to keep making changes to the VM internals, the external interfaces should remain relatively stable, and we will do our best to minimize the amount of breaking changes going forward.
 
-The next version of the VM is being developed in the [next](https://github.com/0xPolygonMiden/miden-vm/tree/next) branch. There is also a documentation for the latest features and changes in the next branch [documentation next branch](https://0xpolygonmiden.github.io/miden-vm/intro/main.html).
+The next version of the VM is being developed in the [next](https://github.com/0xMiden/miden-vm/tree/next) branch. There is also a documentation for the latest features and changes in the next branch [documentation next branch](https://0xMiden.github.io/miden-vm/intro/main.html).
 
 #### Feature highlights
 
@@ -62,17 +63,17 @@ Internally, we use [rayon](https://github.com/rayon-rs/rayon) for parallel compu
 
 The project is organized into several crates like so:
 
-| Crate                    | Description                                                                                                                                                                                                            |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [core](core)             | Contains components defining Miden VM instruction set, program structure, and a set of utility functions used by other crates.                                                                                         |
-| [assembly](assembly)     | Contains Miden assembler. The assembler is used to compile Miden assembly source code into Miden VM programs.                                                                                                          |
-| [processor](processor)   | Contains Miden VM processor. The processor is used to execute Miden programs and to generate program execution traces. These traces are then used by the Miden prover to generate proofs of correct program execution. |
-| [air](air)               | Contains _algebraic intermediate representation_ (AIR) of Miden VM processor logic. This AIR is used by the VM during proof generation and verification processes.                                                     |
-| [prover](prover)         | Contains Miden VM prover. The prover is used to generate STARK proofs attesting to correct execution of Miden VM programs. Internally, the prover uses Miden processor to execute programs.                            |
-| [verifier](verifier)     | Contains a light-weight verifier which can be used to verify proofs of program execution generated by Miden VM.                                                                                                        |
-| [miden](miden)           | Aggregates functionality exposed by Miden VM processor, prover, and verifier in a single place, and also provide a CLI interface for Miden VM.                                                                         |
-| [stdlib](stdlib)         | Contains Miden standard library. The goal of Miden standard library is to provide highly-optimized and battle-tested implementations of commonly-used primitives.                                                      |
-| [test-utils](test-utils) | Contains utilities for testing execution of Miden VM programs.                                                                                                                                                         |
+| Crate                       | Description                                                                                                                                                                                                            |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [core](core)                | Contains components defining Miden VM instruction set, program structure, and a set of utility functions used by other crates.                                                                                         |
+| [assembly](crates/assembly) | Contains Miden assembler. The assembler is used to compile Miden assembly source code into Miden VM programs.                                                                                                          |
+| [processor](processor)      | Contains Miden VM processor. The processor is used to execute Miden programs and to generate program execution traces. These traces are then used by the Miden prover to generate proofs of correct program execution. |
+| [air](air)                  | Contains _algebraic intermediate representation_ (AIR) of Miden VM processor logic. This AIR is used by the VM during proof generation and verification processes.                                                     |
+| [prover](prover)            | Contains Miden VM prover. The prover is used to generate STARK proofs attesting to correct execution of Miden VM programs. Internally, the prover uses Miden processor to execute programs.                            |
+| [verifier](verifier)        | Contains a light-weight verifier which can be used to verify proofs of program execution generated by Miden VM.                                                                                                        |
+| [miden-vm](miden-vm)        | Aggregates functionality exposed by Miden VM processor, prover, and verifier in a single place, and also provide a CLI interface for Miden VM.                                                                         |
+| [stdlib](stdlib)            | Contains Miden standard library. The goal of Miden standard library is to provide highly-optimized and battle-tested implementations of commonly-used primitives.                                                      |
+| [test-utils](test-utils)    | Contains utilities for testing execution of Miden VM programs.                                                                                                                                                         |
 
 ## Performance
 
@@ -92,7 +93,7 @@ A few general notes on performance:
 
 ### Single-core prover performance
 
-When executed on a single CPU core, the current version of Miden VM operates at around 20 - 25 KHz. In the benchmarks below, the VM executes a [Fibonacci calculator](miden/README.md#fibonacci-calculator) program on Apple M1 Pro CPU in a single thread. The generated proofs have a target security level of 96 bits.
+When executed on a single CPU core, the current version of Miden VM operates at around 20 - 25 KHz. In the benchmarks below, the VM executes a [Fibonacci calculator](miden-vm/README.md#fibonacci-calculator) program on Apple M1 Pro CPU in a single thread. The generated proofs have a target security level of 96 bits.
 
 |   VM cycles    | Execution time | Proving time | RAM consumed | Proof size |
 | :------------: | :------------: | :----------: | :----------: | :--------: |
@@ -179,6 +180,5 @@ StarkWare's STARK tutorial:
 
 - [STARK 101](https://starkware.co/stark-101/)
 
-## License
-
-This project is [MIT licensed](./LICENSE).
+## Licensing
+Any contribution intentionally submitted for inclusion in this repository, as defined in the Apache-2.0 license, shall be dual licensed under the [MIT](./LICENSE-MIT) and [Apache 2.0](./LICENSE-APACHE) licenses, without any additional terms or conditions.

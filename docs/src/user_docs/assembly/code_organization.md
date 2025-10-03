@@ -179,7 +179,7 @@ In all of the forms described above, the actual implementation of the re-exporte
 ### Constants
 Miden assembly supports constant declarations. These constants are scoped to the module they are defined in and can be used as immediate parameters for Miden assembly instructions. Constants are supported as immediate values for many of the instructions in the Miden Assembly instruction set, see the documentation for specific instructions to determine whether or not it provides a form which accepts immediate operands.
 
-Constants must be declared right after module imports and before any procedures or program bodies. A constant's name must start with an upper-case letter and can contain any combination of numbers, upper-case ASCII letters, and underscores (`_`). The number of characters in a constant name cannot exceed 100.
+A constant's name must start with an upper-case letter and can contain any combination of numbers, upper-case ASCII letters, and underscores (`_`). The number of characters in a constant name cannot exceed 100.
 
 A constant's value must be in a decimal or hexadecimal form and be in the range between $0$ and $2^{64} - 2^{32}$ (both inclusive). Value can be defined by an arithmetic expression using `+`, `-`, `*`, `/`, `//`, `(`, `)` operators and references to the previously defined constants if it uses only decimal numbers. Here `/` is a field division and `//` is an integer division. Note that the arithmetic expression cannot contain spaces.
 
@@ -196,6 +196,49 @@ begin
     mem_store.ADDR_1
 end
 
+```
+
+#### Word constants
+
+Along with the regular value constants a _word_ constants could be used. They could be declared as an array of four elements or as a long hex value, and then could be used in the `push` instructions referenced by their name. Notice that a word constant can not be used in a constant expression.
+
+```
+const.SAMPLE_WORD=[1,2,3,4]
+const.SAMPLE_HEX_WORD=0x0200000000000000030000000000000004000000000000000500000000000000
+
+begin
+    push.SAMPLE_WORD       # is equivalent to push.1.2.3.4
+    push.SAMPLE_HEX_WORD.6 # is equivalent to push.2.3.4.5.6
+end
+```
+
+#### Constant slices
+
+It is possible to get just some part of a word constant using slice notation. This could be done by specifying a range in square brackets right after the constant's name. Attempt to get slices from constants which don't represent words will result in errors. 
+
+```
+const.SAMPLE_WORD=[5,6,7,8]
+const.SAMPLE_VALUE=9
+
+begin
+    push.SAMPLE_WORD[1..3]  # is equivalent to push.6.7
+    push.SAMPLE_WORD[0]     # is equivalent to push.5
+
+    push.SAMPLE_VALUE[1..3] # returns an error: invalid slice constant
+end
+```
+
+If a slice with an invalid or empty range is used with a word constant, an error will be returned.
+
+```
+const.SAMPLE_WORD=[5,6,7,8]
+
+begin
+    push.SAMPLE_WORD[10..6] # returns an error: invalid or empty range
+    push.SAMPLE_WORD[5..7]  # returns an error: invalid or empty range
+    push.SAMPLE_WORD[2..2]  # returns an error: invalid or empty range
+
+end
 ```
 
 ### Comments

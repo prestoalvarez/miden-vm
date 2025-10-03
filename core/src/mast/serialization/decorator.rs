@@ -1,23 +1,33 @@
 use alloc::vec::Vec;
 
+use miden_debug_types::{Location, Uri};
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::{FromPrimitive, ToPrimitive};
-use winter_utils::{
-    ByteReader, ByteWriter, Deserializable, DeserializationError, Serializable, SliceReader,
-};
+#[cfg(all(feature = "arbitrary", feature = "std"))]
+use proptest_derive::Arbitrary;
 
 use super::{
     DecoratorDataOffset,
     string_table::{StringTable, StringTableBuilder},
 };
-use crate::{AssemblyOp, DebugOptions, Decorator};
+use crate::{
+    AssemblyOp, DebugOptions, Decorator,
+    utils::{
+        ByteReader, ByteWriter, Deserializable, DeserializationError, Serializable, SliceReader,
+    },
+};
 
 /// Represents a serialized [`Decorator`].
 ///
 /// The serialized representation of [`DecoratorInfo`] is guaranteed to be fixed width, so that the
 /// decorators stored in the `decorators` table of the serialized [`MastForest`] can be accessed
 /// quickly by index.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(all(feature = "arbitrary", feature = "std"), derive(Arbitrary))]
+#[cfg_attr(
+    all(feature = "arbitrary", test),
+    miden_serde_test_macros::serde_test(winter_serde(true), serde_test(false))
+)]
 pub struct DecoratorInfo {
     variant: EncodedDecoratorVariant,
     decorator_data_offset: DecoratorDataOffset,
@@ -50,11 +60,11 @@ impl DecoratorInfo {
                 // source location
                 let location = if data_reader.read_bool()? {
                     let str_index_in_table = data_reader.read_usize()?;
-                    let path = string_table.read_arc_str(str_index_in_table)?;
+                    let uri = string_table.read_arc_str(str_index_in_table).map(Uri::from)?;
                     let start = data_reader.read_u32()?;
                     let end = data_reader.read_u32()?;
-                    Some(crate::debuginfo::Location {
-                        path,
+                    Some(Location {
+                        uri,
                         start: start.into(),
                         end: end.into(),
                     })
@@ -109,6 +119,10 @@ impl DecoratorInfo {
 
                 Ok(Decorator::Trace(value))
             },
+            EncodedDecoratorVariant::DebugOptionsAdvStackTop => {
+                let value = data_reader.read_u16()?;
+                Ok(Decorator::Debug(DebugOptions::AdvStackTop(value)))
+            },
         }
     }
 }
@@ -138,7 +152,12 @@ impl Deserializable for DecoratorInfo {
 ///
 /// This is effectively equivalent to a set of constants, and designed to convert between variant
 /// discriminant and enum variant conveniently.
-#[derive(Debug, FromPrimitive, ToPrimitive)]
+#[derive(Debug, FromPrimitive, ToPrimitive, PartialEq, Eq)]
+#[cfg_attr(all(feature = "arbitrary", feature = "std"), derive(Arbitrary))]
+#[cfg_attr(
+    all(feature = "arbitrary", test),
+    miden_serde_test_macros::serde_test(winter_serde(true), serde_test(false))
+)]
 #[repr(u8)]
 pub enum EncodedDecoratorVariant {
     AssemblyOp,
@@ -147,6 +166,7 @@ pub enum EncodedDecoratorVariant {
     DebugOptionsMemAll,
     DebugOptionsMemInterval,
     DebugOptionsLocalInterval,
+    DebugOptionsAdvStackTop,
     Trace,
 }
 
@@ -175,6 +195,7 @@ impl From<&Decorator> for EncodedDecoratorVariant {
                 DebugOptions::MemAll => Self::DebugOptionsMemAll,
                 DebugOptions::MemInterval(..) => Self::DebugOptionsMemInterval,
                 DebugOptions::LocalInterval(..) => Self::DebugOptionsLocalInterval,
+                DebugOptions::AdvStackTop(_) => Self::DebugOptionsAdvStackTop,
             },
             Decorator::Trace(_) => Self::Trace,
         }
@@ -239,7 +260,7 @@ impl DecoratorDataBuilder {
                 let loc = assembly_op.location();
                 self.decorator_data.write_bool(loc.is_some());
                 if let Some(loc) = loc {
-                    let str_offset = self.string_table_builder.add_string(loc.path.as_ref());
+                    let str_offset = self.string_table_builder.add_string(loc.uri.as_ref());
                     self.decorator_data.write_usize(str_offset);
                     self.decorator_data.write_u32(loc.start.to_u32());
                     self.decorator_data.write_u32(loc.end.to_u32());
@@ -263,6 +284,10 @@ impl DecoratorDataBuilder {
             Decorator::Debug(debug_options) => match debug_options {
                 DebugOptions::StackTop(value) => {
                     self.decorator_data.push(*value);
+                    Some(data_offset)
+                },
+                DebugOptions::AdvStackTop(value) => {
+                    self.decorator_data.extend(value.to_le_bytes());
                     Some(data_offset)
                 },
                 DebugOptions::MemInterval(start, end) => {

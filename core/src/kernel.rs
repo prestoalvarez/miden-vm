@@ -1,6 +1,8 @@
 use alloc::vec::Vec;
 
-use miden_crypto::hash::rpo::RpoDigest;
+use miden_crypto::Word;
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
 
 use crate::{
     errors::KernelError,
@@ -15,14 +17,20 @@ use crate::{
 /// The internally-stored list always has a consistent order, regardless of the order of procedure
 /// list used to instantiate a kernel.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Kernel(Vec<RpoDigest>);
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
+#[cfg_attr(
+    all(feature = "arbitrary", test),
+    miden_serde_test_macros::serde_test(winter_serde(true))
+)]
+pub struct Kernel(Vec<Word>);
 
 impl Kernel {
     /// The maximum number of procedures which can be exported from a Kernel.
     pub const MAX_NUM_PROCEDURES: usize = u8::MAX as usize;
 
     /// Returns a new [Kernel] instantiated with the specified procedure hashes.
-    pub fn new(proc_hashes: &[RpoDigest]) -> Result<Self, KernelError> {
+    pub fn new(proc_hashes: &[Word]) -> Result<Self, KernelError> {
         if proc_hashes.len() > Self::MAX_NUM_PROCEDURES {
             Err(KernelError::TooManyProcedures(Self::MAX_NUM_PROCEDURES, proc_hashes.len()))
         } else {
@@ -45,12 +53,14 @@ impl Kernel {
     }
 
     /// Returns true if a procedure with the specified hash belongs to this kernel.
-    pub fn contains_proc(&self, proc_hash: RpoDigest) -> bool {
-        self.0.binary_search(&proc_hash).is_ok()
+    pub fn contains_proc(&self, proc_hash: Word) -> bool {
+        // Note: we can't use `binary_search()` here because the hashes were sorted using a
+        // different key that the `binary_search` algorithm uses.
+        self.0.contains(&proc_hash)
     }
 
     /// Returns a list of procedure hashes contained in this kernel.
-    pub fn proc_hashes(&self) -> &[RpoDigest] {
+    pub fn proc_hashes(&self) -> &[Word] {
         &self.0
     }
 }
@@ -67,7 +77,7 @@ impl Serializable for Kernel {
 impl Deserializable for Kernel {
     fn read_from<R: ByteReader>(source: &mut R) -> Result<Self, DeserializationError> {
         let len = source.read_u8()? as usize;
-        let kernel = source.read_many::<RpoDigest>(len)?;
+        let kernel = source.read_many::<Word>(len)?;
         Ok(Self(kernel))
     }
 }

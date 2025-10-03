@@ -1,8 +1,8 @@
 [package]
 name = "miden-processor"
-version = "0.14.0"
+version.workspace = true
 description = "Miden VM processor"
-documentation = "https://docs.rs/miden-processor/0.14.0"
+documentation = "https://docs.rs/miden-processor"
 readme = "README.md"
 categories = ["emulators", "no-std"]
 keywords = ["miden", "virtual-machine"]
@@ -20,22 +20,42 @@ doctest = false
 [features]
 concurrent = ["std", "winter-prover/concurrent"]
 default = ["std"]
-std = ["vm-core/std", "winter-prover/std", "thiserror/std"]
-testing = ["miden-air/testing"]
+std = [
+    "miden-core/std",
+    "miden-debug-types/std",
+    "miden-utils-diagnostics/std",
+    "winter-prover/std",
+    "thiserror/std",
+]
+testing = ["miden-air/testing", "tokio"]
+# Removes proper error context from the error messages. Enable in production builds that need
+# maximal performance.
+no_err_ctx = []
 # Like `testing`, but slows down the processor speed to make it easier to debug.
 bus-debugger = ["testing", "miden-air/testing"]
 
 [dependencies]
-miden-air = { package = "miden-air", path = "../air", version = "0.14", default-features = false }
-tracing = { version = "0.1", default-features = false, features = ["attributes"] }
-vm-core = { package = "miden-core", path = "../core", version = "0.14", default-features = false }
-winter-prover = { package = "winter-prover", version = "0.12", default-features = false }
-thiserror = { workspace = true }
+# Miden dependencies
+miden-air.workspace = true
+miden-core.workspace = true
+miden-debug-types.workspace = true
+miden-utils-diagnostics.workspace = true
+
+# External dependencies
+paste.workspace = true
+tracing.workspace = true
+thiserror.workspace = true
+# For `testing`
+tokio = { workspace = true, features = ["rt"], optional = true }
+winter-prover.workspace = true
 
 [dev-dependencies]
-assembly = { package = "miden-assembly", path = "../assembly", version = "0.14", default-features = false }
+miden-assembly.workspace = true
+miden-utils-testing.workspace = true
+insta.workspace = true
 logtest = { version = "2.0", default-features = false }
-rstest = { version = "0.24" }
-test-utils = { package = "miden-test-utils", path = "../test-utils" }
-winter-fri = { package = "winter-fri", version = "0.12" }
-winter-utils = { package = "winter-utils", version = "0.12" }
+pretty_assertions = "1.4"
+rstest = { version = "0.26" }
+tokio = { workspace = true, features = ["rt"] }
+winter-fri.workspace = true
+winter-utils.workspace = true

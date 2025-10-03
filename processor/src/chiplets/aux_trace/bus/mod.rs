@@ -1,3 +1,4 @@
+use ace::{build_ace_chiplet_requests, build_ace_chiplet_responses};
 use bitwise::{build_bitwise_chiplet_responses, build_bitwise_request};
 use hasher::{
     ControlBlockRequestMessage, build_control_block_request, build_end_block_request,
@@ -23,12 +24,12 @@ use miden_air::{
         main_trace::MainTrace,
     },
 };
-use vm_core::{
-    ExtensionField, ONE, OPCODE_CALL, OPCODE_DYN, OPCODE_DYNCALL, OPCODE_END, OPCODE_HORNERBASE,
-    OPCODE_HORNEREXT, OPCODE_HPERM, OPCODE_JOIN, OPCODE_LOOP, OPCODE_MLOAD, OPCODE_MLOADW,
-    OPCODE_MPVERIFY, OPCODE_MRUPDATE, OPCODE_MSTORE, OPCODE_MSTOREW, OPCODE_MSTREAM, OPCODE_PIPE,
-    OPCODE_RESPAN, OPCODE_SPAN, OPCODE_SPLIT, OPCODE_SYSCALL, OPCODE_U32AND, OPCODE_U32XOR,
-    PrimeCharacteristicRing, PrimeField64, ZERO,
+use miden_core::{
+    Kernel, ONE, OPCODE_CALL, OPCODE_DYN, OPCODE_DYNCALL, OPCODE_END, OPCODE_EVALCIRCUIT,
+    OPCODE_HORNERBASE, OPCODE_HORNEREXT, OPCODE_HPERM, OPCODE_JOIN, OPCODE_LOOP, OPCODE_MLOAD,
+    OPCODE_MLOADW, OPCODE_MPVERIFY, OPCODE_MRUPDATE, OPCODE_MSTORE, OPCODE_MSTOREW, OPCODE_MSTREAM,
+    OPCODE_PIPE, OPCODE_RESPAN, OPCODE_SPAN, OPCODE_SPLIT, OPCODE_SYSCALL, OPCODE_U32AND,
+    OPCODE_U32XOR, ZERO,
 };
 
 use super::Felt;
@@ -37,19 +38,34 @@ use crate::{
     trace::AuxColumnBuilder,
 };
 
+mod ace;
 mod bitwise;
 mod hasher;
 mod kernel;
 mod memory;
 
+pub use memory::{build_ace_memory_read_element_request, build_ace_memory_read_word_request};
+
+use crate::chiplets::aux_trace::bus::kernel::build_kernel_init_requests;
+
 // BUS COLUMN BUILDER
 // ================================================================================================
 
 /// Describes how to construct the execution trace of the chiplets bus auxiliary trace column.
-#[derive(Default)]
-pub struct BusColumnBuilder {}
+pub struct BusColumnBuilder<'a> {
+    kernel: &'a Kernel,
+}
 
-impl<E: ExtensionField<Felt>> AuxColumnBuilder<E> for BusColumnBuilder {
+impl<'a> BusColumnBuilder<'a> {
+    pub(super) fn new(kernel: &'a Kernel) -> Self {
+        Self { kernel }
+    }
+}
+
+impl<E> AuxColumnBuilder<E> for BusColumnBuilder<'_>
+where
+    E: FieldElement<BaseField = Felt>,
+{
     /// Constructs the requests made by the VM-components to the chiplets at `row`.
     fn get_requests_at(
         &self,
@@ -57,10 +73,7 @@ impl<E: ExtensionField<Felt>> AuxColumnBuilder<E> for BusColumnBuilder {
         alphas: &[E],
         row: RowIndex,
         debugger: &mut BusDebugger<E>,
-    ) -> E
-    where
-        E: ExtensionField<Felt>,
-    {
+    ) -> E {
         let op_code_felt = main_trace.get_op_code(row);
         let op_code = op_code_felt.as_canonical_u64() as u8;
 
@@ -119,6 +132,7 @@ impl<E: ExtensionField<Felt>> AuxColumnBuilder<E> for BusColumnBuilder {
             OPCODE_MPVERIFY => build_mpverify_request(main_trace, alphas, row, debugger),
             OPCODE_MRUPDATE => build_mrupdate_request(main_trace, alphas, row, debugger),
             OPCODE_PIPE => build_pipe_request(main_trace, alphas, row, debugger),
+            OPCODE_EVALCIRCUIT => build_ace_chiplet_requests(main_trace, alphas, row, debugger),
             _ => E::ONE,
         }
     }
@@ -130,21 +144,29 @@ impl<E: ExtensionField<Felt>> AuxColumnBuilder<E> for BusColumnBuilder {
         alphas: &[E],
         row: RowIndex,
         debugger: &mut BusDebugger<E>,
-    ) -> E
-    where
-        E: ExtensionField<Felt>,
-    {
+    ) -> E {
         if main_trace.is_hash_row(row) {
             build_hasher_chiplet_responses(main_trace, row, alphas, debugger)
         } else if main_trace.is_bitwise_row(row) {
             build_bitwise_chiplet_responses(main_trace, row, alphas, debugger)
         } else if main_trace.is_memory_row(row) {
             build_memory_chiplet_responses(main_trace, row, alphas, debugger)
+        } else if main_trace.is_ace_row(row) {
+            build_ace_chiplet_responses(main_trace, row, alphas, debugger)
         } else if main_trace.is_kernel_row(row) {
             build_kernel_chiplet_responses(main_trace, row, alphas, debugger)
         } else {
             E::ONE
         }
+    }
+
+    fn init_requests(
+        &self,
+        _main_trace: &MainTrace,
+        alphas: &[E],
+        _debugger: &mut BusDebugger<E>,
+    ) -> E {
+        build_kernel_init_requests(self.kernel.proc_hashes(), alphas, _debugger)
     }
 }
 
@@ -152,13 +174,16 @@ impl<E: ExtensionField<Felt>> AuxColumnBuilder<E> for BusColumnBuilder {
 // ================================================================================================
 
 /// Builds requests made on a `DYN` or `DYNCALL` operation.
-fn build_dyn_block_request<E: ExtensionField<Felt>>(
+fn build_dyn_block_request<E>(
     main_trace: &MainTrace,
     op_code_felt: Felt,
     alphas: &[E],
     row: RowIndex,
     _debugger: &mut BusDebugger<E>,
-) -> E {
+) -> E
+where
+    E: FieldElement<BaseField = Felt>,
+{
     let control_block_req = ControlBlockRequestMessage {
         transition_label: Felt::from_u8(LINEAR_HASH_LABEL + 16),
         addr_next: main_trace.addr(row + 1),
@@ -171,8 +196,8 @@ fn build_dyn_block_request<E: ExtensionField<Felt>>(
         ctx: main_trace.ctx(row),
         addr: main_trace.stack_element(0, row),
         clk: main_trace.clk(row),
-        word: main_trace.decoder_hasher_state_first_half(row),
-        source: if op_code_felt == Felt::from_u8(OPCODE_DYNCALL) {
+        word: main_trace.decoder_hasher_state_first_half(row).into(),
+        source: if op_code_felt == OPCODE_DYNCALL.into() {
             "dyncall"
         } else {
             "dyn"
@@ -191,13 +216,16 @@ fn build_dyn_block_request<E: ExtensionField<Felt>>(
 }
 
 /// Builds requests made to kernel ROM chiplet when initializing a syscall block.
-fn build_syscall_block_request<E: ExtensionField<Felt>>(
+fn build_syscall_block_request<E>(
     main_trace: &MainTrace,
     op_code_felt: Felt,
     alphas: &[E],
     row: RowIndex,
     _debugger: &mut BusDebugger<E>,
-) -> E {
+) -> E
+where
+    E: FieldElement<BaseField = Felt>,
+{
     let control_block_req = ControlBlockRequestMessage {
         transition_label: Felt::from_u8(LINEAR_HASH_LABEL + 16),
         addr_next: main_trace.addr(row + 1),
@@ -223,18 +251,8 @@ fn build_syscall_block_request<E: ExtensionField<Felt>>(
 // HELPER FUNCTIONS
 // ================================================================================================
 
-/// Runs an inner product between the alphas and the elements.
-#[inline(always)]
-fn build_value<E: ExtensionField<Felt>, const N: usize>(alphas: &[E], elements: [Felt; N]) -> E {
-    debug_assert_eq!(alphas.len(), elements.len());
-    let mut value = E::ZERO;
-    for i in 0..N {
-        value += alphas[i] * elements[i];
-    }
-    value
-}
-
 /// Returns the operation unique label.
+#[inline(always)]
 fn get_op_label(s0: Felt, s1: Felt, s2: Felt, s3: Felt) -> Felt {
     s3 * Felt::from_u8(1 << 3) + s2 * Felt::from_u8(1 << 2) + s1 * Felt::from_u8(2) + s0 + ONE
 }

@@ -1,222 +1,163 @@
-use alloc::sync::Arc;
+use alloc::{sync::Arc, vec::Vec};
+use core::future::Future;
 
-use vm_core::{DebugOptions, crypto::hash::RpoDigest, mast::MastForest};
+use miden_core::{
+    AdviceMap, DebugOptions, Felt, Word, crypto::merkle::InnerNodeInfo, mast::MastForest,
+};
+use miden_debug_types::{Location, SourceFile, SourceSpan};
 
-use super::{ExecutionError, ProcessState};
-use crate::{KvMap, MemAdviceProvider};
+use crate::{EventError, ExecutionError, ProcessState};
 
 pub(super) mod advice;
-use advice::AdviceProvider;
 
-#[cfg(feature = "std")]
-mod debug;
+pub mod debug;
+
+pub mod default;
+
+pub mod handlers;
+use handlers::DebugHandler;
 
 mod mast_forest_store;
 pub use mast_forest_store::{MastForestStore, MemMastForestStore};
 
+// ADVICE MAP MUTATIONS
+// ================================================================================================
+
+/// Any possible way an event can modify the advice map
+#[derive(Debug, PartialEq, Eq)]
+pub enum AdviceMutation {
+    ExtendStack { values: Vec<Felt> },
+    ExtendMap { other: AdviceMap },
+    ExtendMerkleStore { infos: Vec<InnerNodeInfo> },
+}
+
+impl AdviceMutation {
+    pub fn extend_stack(iter: impl IntoIterator<Item = Felt>) -> Self {
+        Self::ExtendStack { values: Vec::from_iter(iter) }
+    }
+
+    pub fn extend_map(other: AdviceMap) -> Self {
+        Self::ExtendMap { other }
+    }
+
+    pub fn extend_merkle_store(infos: impl IntoIterator<Item = InnerNodeInfo>) -> Self {
+        Self::ExtendMerkleStore { infos: Vec::from_iter(infos) }
+    }
+}
 // HOST TRAIT
 // ================================================================================================
+
+/// Defines the common interface between [SyncHost] and [AsyncHost], by which the VM can interact
+/// with the host.
+///
+/// There are three main categories of interactions between the VM and the host:
+/// 1. getting a library's MAST forest,
+/// 2. handling VM events (which can mutate the process' advice provider), and
+/// 3. handling debug and trace events.
+pub trait BaseHost {
+    // REQUIRED METHODS
+    // --------------------------------------------------------------------------------------------
+
+    /// Returns the [`SourceSpan`] and optional [`SourceFile`] for the provided location.
+    fn get_label_and_source_file(
+        &self,
+        location: &Location,
+    ) -> (SourceSpan, Option<Arc<SourceFile>>);
+
+    /// Handles the debug request from the VM.
+    fn on_debug(
+        &mut self,
+        process: &mut ProcessState,
+        options: &DebugOptions,
+    ) -> Result<(), ExecutionError> {
+        let mut handler = debug::DefaultDebugHandler::default();
+        handler.on_debug(process, options)
+    }
+
+    /// Handles the trace emitted from the VM.
+    fn on_trace(
+        &mut self,
+        process: &mut ProcessState,
+        trace_id: u32,
+    ) -> Result<(), ExecutionError> {
+        let mut handler = debug::DefaultDebugHandler::default();
+        handler.on_trace(process, trace_id)
+    }
+
+    /// Handles the failure of the assertion instruction.
+    fn on_assert_failed(&mut self, _process: &ProcessState, _err_code: Felt) {}
+}
 
 /// Defines an interface by which the VM can interact with the host.
 ///
 /// There are four main categories of interactions between the VM and the host:
 /// 1. accessing the advice provider,
 /// 2. getting a library's MAST forest,
-/// 3. handling advice events (which internally mutates the advice provider), and
+/// 3. handling VM events (which can mutate the process' advice provider), and
 /// 4. handling debug and trace events.
-pub trait Host {
-    type AdviceProvider: AdviceProvider;
-
+pub trait SyncHost: BaseHost {
     // REQUIRED METHODS
     // --------------------------------------------------------------------------------------------
 
-    /// Returns a reference to the advice provider.
-    fn advice_provider(&self) -> &Self::AdviceProvider;
-
-    /// Returns a mutable reference to the advice provider.
-    fn advice_provider_mut(&mut self) -> &mut Self::AdviceProvider;
-
     /// Returns MAST forest corresponding to the specified digest, or None if the MAST forest for
-    /// this digest could not be found in this [Host].
-    fn get_mast_forest(&self, node_digest: &RpoDigest) -> Option<Arc<MastForest>>;
+    /// this digest could not be found in this host.
+    fn get_mast_forest(&self, node_digest: &Word) -> Option<Arc<MastForest>>;
 
-    // PROVIDED METHODS
-    // --------------------------------------------------------------------------------------------
-
-    /// Handles the event emitted from the VM.
-    fn on_event(&mut self, _process: ProcessState, _event_id: u32) -> Result<(), ExecutionError> {
-        #[cfg(feature = "std")]
-        std::println!(
-            "Event with id {} emitted at step {} in context {}",
-            _event_id,
-            _process.clk(),
-            _process.ctx()
-        );
-        Ok(())
-    }
-
-    /// Handles the debug request from the VM.
-    fn on_debug(
-        &mut self,
-        _process: ProcessState,
-        _options: &DebugOptions,
-    ) -> Result<(), ExecutionError> {
-        #[cfg(feature = "std")]
-        debug::print_debug_info(_process, _options);
-        Ok(())
-    }
-
-    /// Handles the trace emitted from the VM.
-    fn on_trace(&mut self, _process: ProcessState, _trace_id: u32) -> Result<(), ExecutionError> {
-        #[cfg(feature = "std")]
-        std::println!(
-            "Trace with id {} emitted at step {} in context {}",
-            _trace_id,
-            _process.clk(),
-            _process.ctx()
-        );
-        Ok(())
-    }
-
-    /// Handles the failure of the assertion instruction.
-    fn on_assert_failed(&mut self, process: ProcessState, err_code: u32) -> ExecutionError {
-        ExecutionError::FailedAssertion {
-            clk: process.clk(),
-            err_code,
-            err_msg: None,
-        }
-    }
+    /// Invoked when the VM encounters an `EMIT` operation.
+    ///
+    /// The event ID is available at the top of the stack (position 0) when this handler is called.
+    /// This allows the handler to access both the event ID and any additional context data that
+    /// may have been pushed onto the stack prior to the emit operation.
+    fn on_event(&mut self, process: &ProcessState) -> Result<Vec<AdviceMutation>, EventError>;
 }
 
-impl<H> Host for &mut H
-where
-    H: Host,
-{
-    type AdviceProvider = H::AdviceProvider;
-
-    fn advice_provider(&self) -> &Self::AdviceProvider {
-        H::advice_provider(self)
-    }
-
-    fn advice_provider_mut(&mut self) -> &mut Self::AdviceProvider {
-        H::advice_provider_mut(self)
-    }
-
-    fn get_mast_forest(&self, node_digest: &RpoDigest) -> Option<Arc<MastForest>> {
-        H::get_mast_forest(self, node_digest)
-    }
-
-    fn on_debug(
-        &mut self,
-        process: ProcessState,
-        options: &DebugOptions,
-    ) -> Result<(), ExecutionError> {
-        H::on_debug(self, process, options)
-    }
-
-    fn on_event(&mut self, process: ProcessState, event_id: u32) -> Result<(), ExecutionError> {
-        H::on_event(self, process, event_id)
-    }
-
-    fn on_trace(&mut self, process: ProcessState, trace_id: u32) -> Result<(), ExecutionError> {
-        H::on_trace(self, process, trace_id)
-    }
-
-    fn on_assert_failed(&mut self, process: ProcessState, err_code: u32) -> ExecutionError {
-        H::on_assert_failed(self, process, err_code)
-    }
-}
-
-// DEFAULT HOST IMPLEMENTATION
+// ASYNC HOST trait
 // ================================================================================================
 
-/// A default [Host] implementation that provides the essential functionality required by the VM.
-pub struct DefaultHost<A> {
-    adv_provider: A,
-    store: MemMastForestStore,
+/// Analogous to the [SyncHost] trait, but designed for asynchronous execution contexts.
+pub trait AsyncHost: BaseHost {
+    // REQUIRED METHODS
+    // --------------------------------------------------------------------------------------------
+
+    // Note: we don't use the `async` keyword in this method, since we need to specify the `+ Send`
+    // bound to the returned Future, and `async` doesn't allow us to do that.
+
+    /// Returns MAST forest corresponding to the specified digest, or None if the MAST forest for
+    /// this digest could not be found in this host.
+    fn get_mast_forest(&self, node_digest: &Word) -> impl FutureMaybeSend<Option<Arc<MastForest>>>;
+
+    /// Handles the event emitted from the VM and provides advice mutations to be applied to
+    /// the advice provider.
+    ///
+    /// The event ID is available at the top of the stack (position 0) when this handler is called.
+    /// This allows the handler to access both the event ID and any additional context data that
+    /// may have been pushed onto the stack prior to the emit operation.
+    fn on_event(
+        &mut self,
+        process: &ProcessState<'_>,
+    ) -> impl FutureMaybeSend<Result<Vec<AdviceMutation>, EventError>>;
 }
 
-impl<A: Clone> Clone for DefaultHost<A> {
-    fn clone(&self) -> Self {
-        Self {
-            adv_provider: self.adv_provider.clone(),
-            store: self.store.clone(),
-        }
-    }
-}
+/// Alias for a `Future`
+///
+/// Unless the compilation target family is `wasm`, we add `Send` to the required bounds. For
+/// `wasm` compilation targets there is no `Send` bound.
+///
+/// We also provide a blank implementation of this trait for all features.
+#[cfg(target_family = "wasm")]
+pub trait FutureMaybeSend<O>: Future<Output = O> {}
 
-impl Default for DefaultHost<MemAdviceProvider> {
-    fn default() -> Self {
-        Self {
-            adv_provider: MemAdviceProvider::default(),
-            store: MemMastForestStore::default(),
-        }
-    }
-}
+#[cfg(target_family = "wasm")]
+impl<T, O> FutureMaybeSend<O> for T where T: Future<Output = O> {}
 
-impl<A: AdviceProvider> DefaultHost<A> {
-    pub fn new(adv_provider: A) -> Self {
-        Self {
-            adv_provider,
-            store: MemMastForestStore::default(),
-        }
-    }
+/// Alias for a `Future`
+///
+/// Unless the compilation target family is `wasm`, we add `Send` to the required bounds. For
+/// `wasm` compilation targets there is no `Send` bound.
+///
+/// We also provide a blank implementation of this trait for all features.
+#[cfg(not(target_family = "wasm"))]
+pub trait FutureMaybeSend<O>: Future<Output = O> + Send {}
 
-    pub fn load_mast_forest(&mut self, mast_forest: Arc<MastForest>) -> Result<(), ExecutionError> {
-        // Load the MAST's advice data into the advice provider.
-
-        for (digest, values) in mast_forest.advice_map().iter() {
-            if let Some(stored_values) = self.advice_provider().get_mapped_values(digest) {
-                if stored_values != values {
-                    return Err(ExecutionError::AdviceMapKeyAlreadyPresent(digest.into()));
-                }
-            } else {
-                self.advice_provider_mut().insert_into_map(digest.into(), values.clone());
-            }
-        }
-
-        self.store.insert(mast_forest);
-        Ok(())
-    }
-
-    #[cfg(any(test, feature = "testing"))]
-    pub fn advice_provider(&self) -> &A {
-        &self.adv_provider
-    }
-
-    #[cfg(any(test, feature = "testing"))]
-    pub fn advice_provider_mut(&mut self) -> &mut A {
-        &mut self.adv_provider
-    }
-
-    pub fn into_inner(self) -> A {
-        self.adv_provider
-    }
-}
-
-impl<A: AdviceProvider> Host for DefaultHost<A> {
-    type AdviceProvider = A;
-
-    fn advice_provider(&self) -> &Self::AdviceProvider {
-        &self.adv_provider
-    }
-
-    fn advice_provider_mut(&mut self) -> &mut Self::AdviceProvider {
-        &mut self.adv_provider
-    }
-
-    fn get_mast_forest(&self, node_digest: &RpoDigest) -> Option<Arc<MastForest>> {
-        self.store.get(node_digest)
-    }
-
-    fn on_event(&mut self, _process: ProcessState, _event_id: u32) -> Result<(), ExecutionError> {
-        #[cfg(feature = "std")]
-        std::println!(
-            "Event with id {} emitted at step {} in context {}",
-            _event_id,
-            _process.clk(),
-            _process.ctx()
-        );
-        Ok(())
-    }
-}
+#[cfg(not(target_family = "wasm"))]
+impl<T, O> FutureMaybeSend<O> for T where T: Future<Output = O> + Send {}

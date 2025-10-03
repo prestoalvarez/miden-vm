@@ -17,8 +17,8 @@ use miden_air::{
         decoder::{NUM_OP_BITS, OP_BITS_OFFSET},
     },
 };
-use vm_core::{
-    Field, PrimeCharacteristicRing, PrimeField64, Program, Word,
+use miden_core::{
+    Program, Word,
     chiplets::hasher::apply_permutation,
     crypto::merkle::{MerkleStore, MerkleTree, NodeIndex},
     mast::MastForest,
@@ -26,8 +26,8 @@ use vm_core::{
 };
 
 use super::{
-    AUX_TRACE_RAND_ELEMENTS, AdviceInputs, CHIPLETS_AUX_TRACE_OFFSET, ExecutionTrace, Felt,
-    NUM_RAND_ROWS, ONE, Operation, ZERO, build_span_with_respan_ops,
+    AUX_TRACE_RAND_ELEMENTS, AdviceInputs, CHIPLETS_BUS_AUX_TRACE_OFFSET, ExecutionTrace, Felt,
+    FieldElement, NUM_RAND_ROWS, ONE, Operation, Trace, ZERO, build_span_with_respan_ops,
     build_trace_from_ops_with_inputs, build_trace_from_program, init_state_from_words, rand_array,
 };
 use crate::StackInputs;
@@ -56,7 +56,7 @@ pub fn b_chip_span() {
         let mut mast_forest = MastForest::new();
 
         let basic_block_id =
-            mast_forest.add_block(vec![Operation::Add, Operation::Mul], None).unwrap();
+            mast_forest.add_block(vec![Operation::Add, Operation::Mul], Vec::new()).unwrap();
         mast_forest.make_root(basic_block_id);
 
         Program::new(mast_forest.into(), basic_block_id)
@@ -66,7 +66,7 @@ pub fn b_chip_span() {
 
     let alphas = rand_array::<Felt, AUX_TRACE_RAND_ELEMENTS>();
     let aux_columns = trace.build_aux_trace(&alphas).unwrap();
-    let b_chip = aux_columns.get_column(CHIPLETS_AUX_TRACE_OFFSET);
+    let b_chip = aux_columns.get_column(CHIPLETS_BUS_AUX_TRACE_OFFSET);
 
     assert_eq!(trace.length(), b_chip.len());
     assert_eq!(ONE, b_chip[0]);
@@ -129,7 +129,7 @@ pub fn b_chip_span_with_respan() {
         let mut mast_forest = MastForest::new();
 
         let (ops, _) = build_span_with_respan_ops();
-        let basic_block_id = mast_forest.add_block(ops, None).unwrap();
+        let basic_block_id = mast_forest.add_block(ops, Vec::new()).unwrap();
         mast_forest.make_root(basic_block_id);
 
         Program::new(mast_forest.into(), basic_block_id)
@@ -138,7 +138,7 @@ pub fn b_chip_span_with_respan() {
 
     let alphas = rand_array::<Felt, AUX_TRACE_RAND_ELEMENTS>();
     let aux_columns = trace.build_aux_trace(&alphas).unwrap();
-    let b_chip = aux_columns.get_column(CHIPLETS_AUX_TRACE_OFFSET);
+    let b_chip = aux_columns.get_column(CHIPLETS_BUS_AUX_TRACE_OFFSET);
 
     assert_eq!(trace.length(), b_chip.len());
     assert_eq!(ONE, b_chip[0]);
@@ -227,8 +227,8 @@ pub fn b_chip_merge() {
     let program = {
         let mut mast_forest = MastForest::new();
 
-        let t_branch_id = mast_forest.add_block(vec![Operation::Add], None).unwrap();
-        let f_branch_id = mast_forest.add_block(vec![Operation::Mul], None).unwrap();
+        let t_branch_id = mast_forest.add_block(vec![Operation::Add], Vec::new()).unwrap();
+        let f_branch_id = mast_forest.add_block(vec![Operation::Mul], Vec::new()).unwrap();
         let split_id = mast_forest.add_split(t_branch_id, f_branch_id).unwrap();
         mast_forest.make_root(split_id);
 
@@ -239,7 +239,7 @@ pub fn b_chip_merge() {
 
     let alphas = rand_array::<Felt, AUX_TRACE_RAND_ELEMENTS>();
     let aux_columns = trace.build_aux_trace(&alphas).unwrap();
-    let b_chip = aux_columns.get_column(CHIPLETS_AUX_TRACE_OFFSET);
+    let b_chip = aux_columns.get_column(CHIPLETS_BUS_AUX_TRACE_OFFSET);
 
     assert_eq!(trace.length(), b_chip.len());
     assert_eq!(ONE, b_chip[0]);
@@ -342,7 +342,7 @@ pub fn b_chip_permutation() {
     let program = {
         let mut mast_forest = MastForest::new();
 
-        let basic_block_id = mast_forest.add_block(vec![Operation::HPerm], None).unwrap();
+        let basic_block_id = mast_forest.add_block(vec![Operation::HPerm], Vec::new()).unwrap();
         mast_forest.make_root(basic_block_id);
 
         Program::new(mast_forest.into(), basic_block_id)
@@ -358,7 +358,7 @@ pub fn b_chip_permutation() {
         .expect("failed to convert vector to array");
     let alphas = rand_array::<Felt, AUX_TRACE_RAND_ELEMENTS>();
     let aux_columns = trace.build_aux_trace(&alphas).unwrap();
-    let b_chip = aux_columns.get_column(CHIPLETS_AUX_TRACE_OFFSET);
+    let b_chip = aux_columns.get_column(CHIPLETS_BUS_AUX_TRACE_OFFSET);
 
     assert_eq!(trace.length(), b_chip.len());
     assert_eq!(ONE, b_chip[0]);
@@ -469,11 +469,14 @@ fn b_chip_mpverify() {
     let store = MerkleStore::from(&tree);
     let advice_inputs = AdviceInputs::default().with_merkle_store(store);
 
-    let trace =
-        build_trace_from_ops_with_inputs(vec![Operation::MpVerify(0)], stack_inputs, advice_inputs);
+    let trace = build_trace_from_ops_with_inputs(
+        vec![Operation::MpVerify(ZERO)],
+        stack_inputs,
+        advice_inputs,
+    );
     let alphas = rand_array::<Felt, AUX_TRACE_RAND_ELEMENTS>();
     let aux_columns = trace.build_aux_trace(&alphas).unwrap();
-    let b_chip = aux_columns.get_column(CHIPLETS_AUX_TRACE_OFFSET);
+    let b_chip = aux_columns.get_column(CHIPLETS_BUS_AUX_TRACE_OFFSET);
 
     assert_eq!(trace.length(), b_chip.len());
     assert_eq!(ONE, b_chip[0]);
@@ -499,8 +502,8 @@ fn b_chip_mpverify() {
         .get_path(NodeIndex::new(tree.depth(), index as u64).unwrap())
         .expect("failed to get Merkle tree path");
     let mp_state = init_state_from_words(
-        &[path[0][0], path[0][1], path[0][2], path[0][3]],
-        &[leaves[index][0], leaves[index][1], leaves[index][2], leaves[index][3]],
+        &[path[0][0], path[0][1], path[0][2], path[0][3]].into(),
+        &[leaves[index][0], leaves[index][1], leaves[index][2], leaves[index][3]].into(),
     );
     let mp_init = build_expected(
         &alphas,
@@ -619,7 +622,7 @@ fn b_chip_mrupdate() {
         build_trace_from_ops_with_inputs(vec![Operation::MrUpdate], stack_inputs, advice_inputs);
     let alphas = rand_array::<Felt, AUX_TRACE_RAND_ELEMENTS>();
     let aux_columns = trace.build_aux_trace(&alphas).unwrap();
-    let b_chip = aux_columns.get_column(CHIPLETS_AUX_TRACE_OFFSET);
+    let b_chip = aux_columns.get_column(CHIPLETS_BUS_AUX_TRACE_OFFSET);
 
     assert_eq!(trace.length(), b_chip.len());
     assert_eq!(ONE, b_chip[0]);
@@ -645,8 +648,8 @@ fn b_chip_mrupdate() {
         .get_path(NodeIndex::new(tree.depth(), index as u64).unwrap())
         .expect("failed to get Merkle tree path");
     let mp_state = init_state_from_words(
-        &[path[0][0], path[0][1], path[0][2], path[0][3]],
-        &[leaves[index][0], leaves[index][1], leaves[index][2], leaves[index][3]],
+        &[path[0][0], path[0][1], path[0][2], path[0][3]].into(),
+        &[leaves[index][0], leaves[index][1], leaves[index][2], leaves[index][3]].into(),
     );
     let mp_init_old = build_expected(
         &alphas,
@@ -696,8 +699,8 @@ fn b_chip_mrupdate() {
         .get_path(NodeIndex::new(tree.depth(), index as u64).unwrap())
         .expect("failed to get Merkle tree path");
     let mp_state = init_state_from_words(
-        &[path[0][0], path[0][1], path[0][2], path[0][3]],
-        &[new_leaf_value[0], new_leaf_value[1], new_leaf_value[2], new_leaf_value[3]],
+        &[path[0][0], path[0][1], path[0][2], path[0][3]].into(),
+        &[new_leaf_value[0], new_leaf_value[1], new_leaf_value[2], new_leaf_value[3]].into(),
     );
 
     let mp_new_verify_complete = mp_old_verify_complete + (tree.depth() as usize) * HASH_CYCLE_LEN;
@@ -962,5 +965,5 @@ fn init_leaves(values: &[u64]) -> Vec<Word> {
 
 /// Initializes a Merkle tree leaf with the specified value.
 fn init_leaf(value: u64) -> Word {
-    [Felt::from_u64(value), ZERO, ZERO, ZERO]
+    [Felt::new(value), ZERO, ZERO, ZERO].into()
 }

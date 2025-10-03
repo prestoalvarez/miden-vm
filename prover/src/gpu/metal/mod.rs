@@ -4,15 +4,16 @@
 
 use std::{boxed::Box, marker::PhantomData, time::Instant, vec::Vec};
 
-use air::{AuxRandElements, PartitionOptions};
 use elsa::FrozenVec;
+use miden_air::{AuxRandElements, PartitionOptions};
 use miden_gpu::{
     HashFn,
     metal::{RowHasher, build_merkle_tree, utils::page_aligned_uninit_vector},
 };
+use miden_processor::crypto::{ElementHasher, Hasher};
 use pollster::block_on;
-use processor::crypto::{ElementHasher, Hasher};
 use tracing::{Level, event};
+use winter_maybe_async::{maybe_async, maybe_await};
 use winter_prover::{
     CompositionPoly, CompositionPolyTrace, ConstraintCommitment, ConstraintCompositionCoefficients,
     DefaultConstraintEvaluator, EvaluationFrame, Prover, StarkDomain, TraceInfo, TraceLde,
@@ -29,7 +30,7 @@ use crate::{
     math::fft,
 };
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "async")))]
 mod tests;
 
 // CONSTANTS
@@ -92,6 +93,7 @@ where
         self.execution_prover.options()
     }
 
+    #[maybe_async]
     fn build_aux_trace<E: FieldElement<BaseField = Self::BaseField>>(
         &self,
         trace: &Self::Trace,
@@ -100,6 +102,7 @@ where
         trace.build_aux_trace(aux_rand_elements.rand_elements()).unwrap()
     }
 
+    #[maybe_async]
     fn new_trace_lde<E: FieldElement<BaseField = Felt>>(
         &self,
         trace_info: &TraceInfo,
@@ -110,16 +113,21 @@ where
         MetalTraceLde::new(trace_info, main_trace, domain, self.metal_hash_fn)
     }
 
+    #[maybe_async]
     fn new_evaluator<'a, E: FieldElement<BaseField = Felt>>(
         &self,
         air: &'a ProcessorAir,
         aux_rand_elements: Option<AuxRandElements<E>>,
         composition_coefficients: ConstraintCompositionCoefficients<E>,
     ) -> Self::ConstraintEvaluator<'a, E> {
-        self.execution_prover
-            .new_evaluator(air, aux_rand_elements, composition_coefficients)
+        maybe_await!(self.execution_prover.new_evaluator(
+            air,
+            aux_rand_elements,
+            composition_coefficients
+        ))
     }
 
+    #[maybe_async]
     fn build_constraint_commitment<E: FieldElement<BaseField = Felt>>(
         &self,
         composition_poly_trace: CompositionPolyTrace<E>,
@@ -702,7 +710,7 @@ where
     debug_assert_eq!(polys.num_rows(), twiddles.len() * 2);
     debug_assert_eq!(offsets.len() % polys.num_rows(), 0);
 
-    let num_segments = if polys.num_base_cols() % N == 0 {
+    let num_segments = if polys.num_base_cols().is_multiple_of(N) {
         polys.num_base_cols() / N
     } else {
         polys.num_base_cols() / N + 1

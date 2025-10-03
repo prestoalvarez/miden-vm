@@ -1,5 +1,6 @@
-use processor::{ContextId, DefaultHost, Program};
-use test_utils::{
+use miden_core::{Word, assert_matches};
+use miden_processor::{AdviceInputs, ContextId, DefaultHost, ExecutionError, Program};
+use miden_utils_testing::{
     ExecutionOptions, ONE, Process, StackInputs, ZERO, build_expected_hash, build_expected_perm,
     felt_slice_to_ints,
 };
@@ -23,69 +24,72 @@ fn test_memcopy_words() {
     ";
 
     let stdlib = StdLibrary::default();
-    let assembler = assembly::Assembler::default()
-        .with_library(&stdlib)
+    let assembler = miden_assembly::Assembler::default()
+        .with_dynamic_library(&stdlib)
         .expect("failed to load stdlib");
 
     let program: Program =
         assembler.assemble_program(source).expect("Failed to compile test source.");
 
-    let mut host = DefaultHost::default();
-    host.load_mast_forest(stdlib.mast_forest().clone()).unwrap();
+    let mut host = DefaultHost::default().with_library(&stdlib).unwrap();
 
-    let mut process =
-        Process::new(program.kernel().clone(), StackInputs::default(), ExecutionOptions::default());
+    let mut process = Process::new(
+        program.kernel().clone(),
+        StackInputs::default(),
+        AdviceInputs::default(),
+        ExecutionOptions::default(),
+    );
     process.execute(&program, &mut host).unwrap();
 
     assert_eq!(
         process.chiplets.memory.get_word(ContextId::root(), 1000).unwrap(),
-        Some([ZERO, ZERO, ZERO, ONE]),
+        Some(Word::new([ZERO, ZERO, ZERO, ONE])),
         "Address 1000"
     );
     assert_eq!(
         process.chiplets.memory.get_word(ContextId::root(), 1004).unwrap(),
-        Some([ZERO, ZERO, ONE, ZERO]),
+        Some(Word::new([ZERO, ZERO, ONE, ZERO])),
         "Address 1004"
     );
     assert_eq!(
         process.chiplets.memory.get_word(ContextId::root(), 1008).unwrap(),
-        Some([ZERO, ZERO, ONE, ONE]),
+        Some(Word::new([ZERO, ZERO, ONE, ONE])),
         "Address 1008"
     );
     assert_eq!(
         process.chiplets.memory.get_word(ContextId::root(), 1012).unwrap(),
-        Some([ZERO, ONE, ZERO, ZERO]),
+        Some(Word::new([ZERO, ONE, ZERO, ZERO])),
         "Address 1012"
     );
     assert_eq!(
         process.chiplets.memory.get_word(ContextId::root(), 1016).unwrap(),
-        Some([ZERO, ONE, ZERO, ONE]),
+        Some(Word::new([ZERO, ONE, ZERO, ONE])),
         "Address 1016"
     );
 
     assert_eq!(
         process.chiplets.memory.get_word(ContextId::root(), 2000).unwrap(),
-        Some([ZERO, ZERO, ZERO, ONE]),
+        Some(Word::new([ZERO, ZERO, ZERO, ONE])),
         "Address 2000"
     );
     assert_eq!(
         process.chiplets.memory.get_word(ContextId::root(), 2004).unwrap(),
-        Some([ZERO, ZERO, ONE, ZERO]),
+        Some(Word::new([ZERO, ZERO, ONE, ZERO])),
         "Address 2004"
     );
     assert_eq!(
         process.chiplets.memory.get_word(ContextId::root(), 2008).unwrap(),
-        Some([ZERO, ZERO, ONE, ONE]),
+        Some(Word::new([ZERO, ZERO, ONE, ONE])),
         "Address 2008"
     );
     assert_eq!(
         process.chiplets.memory.get_word(ContextId::root(), 2012).unwrap(),
-        Some([ZERO, ONE, ZERO, ZERO]),
+        Some(Word::new([ZERO, ONE, ZERO, ZERO])),
         "Address 2012"
     );
     assert_eq!(
         process.chiplets.memory.get_word(ContextId::root(), 2016).unwrap(),
-        Some([ZERO, ONE, ZERO, ONE]),
+        Some(Word::new([ZERO, ONE, ZERO, ONE])),
         "Address 2016"
     );
 }
@@ -131,7 +135,7 @@ fn test_pipe_words_to_memory() {
         use.std::crypto::hashes::rpo
 
         begin
-            push.{} # target address
+            push.{mem_addr} # target address
             push.1  # number of words
 
             exec.mem::pipe_words_to_memory
@@ -139,8 +143,7 @@ fn test_pipe_words_to_memory() {
 
             # truncate stack
             swapdw dropw dropw
-        end",
-        mem_addr
+        end"
     );
 
     let operand_stack = &[];
@@ -159,7 +162,7 @@ fn test_pipe_words_to_memory() {
         use.std::crypto::hashes::rpo
 
         begin
-            push.{} # target address
+            push.{mem_addr} # target address
             push.3  # number of words
 
             exec.mem::pipe_words_to_memory
@@ -167,8 +170,7 @@ fn test_pipe_words_to_memory() {
 
             # truncate stack
             swapdw dropw dropw
-        end",
-        mem_addr
+        end"
     );
 
     let operand_stack = &[];
@@ -190,13 +192,12 @@ fn test_pipe_preimage_to_memory() {
 
         begin
             adv_push.4 # push commitment to stack
-            push.{}    # target address
+            push.{mem_addr}    # target address
             push.3     # number of words
 
             exec.mem::pipe_preimage_to_memory
             swap drop
-        end",
-        mem_addr
+        end"
     );
 
     let operand_stack = &[];
@@ -233,4 +234,80 @@ fn test_pipe_preimage_to_memory_invalid_preimage() {
     advice_stack.extend(data);
     let res = build_test!(three_words, operand_stack, &advice_stack).execute();
     assert!(res.is_err());
+}
+
+#[test]
+fn test_pipe_double_words_preimage_to_memory() {
+    // Word-aligned address, as required by `pipe_double_words_preimage_to_memory`.
+    let mem_addr = 1000;
+    let four_words = format!(
+        "use.std::mem
+
+        begin
+            adv_push.4 # push commitment to stack
+            push.{mem_addr}    # target address
+            push.4     # number of words
+
+            exec.mem::pipe_double_words_preimage_to_memory
+            swap drop
+        end"
+    );
+
+    let operand_stack = &[];
+    let data = &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+    let mut advice_stack = felt_slice_to_ints(&build_expected_hash(data));
+    advice_stack.reverse();
+    advice_stack.extend(data);
+    build_test!(four_words, operand_stack, &advice_stack).expect_stack_and_memory(
+        &[mem_addr + (4u64 * 4u64)],
+        mem_addr as u32,
+        data,
+    );
+}
+
+#[test]
+fn test_pipe_double_words_preimage_to_memory_invalid_preimage() {
+    let four_words = "
+    use.std::mem
+
+    begin
+        adv_push.4  # push commitment to stack
+        push.1000   # target address
+        push.4      # number of words
+
+        exec.mem::pipe_double_words_preimage_to_memory
+    end
+    ";
+
+    let operand_stack = &[];
+    let data = &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+    let mut advice_stack = felt_slice_to_ints(&build_expected_hash(data));
+    advice_stack.reverse();
+    advice_stack[0] += 1; // corrupt the expected hash
+    advice_stack.extend(data);
+    let execution_result = build_test!(four_words, operand_stack, &advice_stack).execute();
+    assert_matches!(execution_result, Err(ExecutionError::FailedAssertion { .. }));
+}
+
+#[test]
+fn test_pipe_double_words_preimage_to_memory_invalid_count() {
+    let three_words = "
+    use.std::mem
+
+    begin
+        adv_push.4  # push commitment to stack
+        push.1000   # target address
+        push.3      # number of words
+
+        exec.mem::pipe_double_words_preimage_to_memory
+    end
+    ";
+
+    let operand_stack = &[];
+    let data = &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+    let mut advice_stack = felt_slice_to_ints(&build_expected_hash(data));
+    advice_stack.reverse();
+    advice_stack.extend(data);
+    let execution_result = build_test!(three_words, operand_stack, &advice_stack).execute();
+    assert_matches!(execution_result, Err(ExecutionError::FailedAssertion { .. }));
 }

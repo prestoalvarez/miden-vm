@@ -2,6 +2,9 @@
 
 name: build
 
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main, next]
@@ -17,9 +20,10 @@ jobs:
       matrix:
         toolchain: [stable, nightly]
     steps:
-      - uses: actions/checkout@main
+      - uses: actions/checkout@v4
       - name: Build for no-std
         run: |
           rustup update --no-self-update ${{ matrix.toolchain }}
-          rustup target add wasm32-unknown-unknown
+          rustup +${{ matrix.toolchain }} target add wasm32-unknown-unknown
+          rustup default ${{ matrix.toolchain }}
           make build-no-std

@@ -1,6 +1,6 @@
-use vm_core::{Felt, Operation};
+use miden_core::{Felt, FieldElement, Operation, QuadFelt};
 
-use crate::{ExecutionError, Process, QuadFelt};
+use crate::{ExecutionError, Process, errors::ErrorContext};
 
 // CONSTANTS
 // ================================================================================================
@@ -61,22 +61,49 @@ impl Process {
     ///
     /// The instruction also makes use of the helper registers to hold the value of
     /// alpha = (alpha0, alpha1) during the course of its execution.
-    pub(super) fn op_horner_eval_base(&mut self) -> Result<(), ExecutionError> {
+    /// The helper registers are also used in order to hold the second half of the memory word
+    /// containing (alpha0, alpha1), as well as the temporary values acc_tmp.
+    pub(super) fn op_horner_eval_base(
+        &mut self,
+        err_ctx: &impl ErrorContext,
+    ) -> Result<(), ExecutionError> {
         // read the values of the coefficients, over the base field, from the stack
         let coef = self.get_coeff_as_base_elements();
 
         // read the evaluation point alpha from memory
-        let alpha = self.get_evaluation_point()?;
+        // we also read the second half of the memory word containing alpha
+        let (alpha, k0, k1) = self.get_evaluation_point(err_ctx)?;
 
-        // compute the updated accumulator value
+        // compute the temporary and updated accumulator values
         let acc_old = self.get_accumulator();
-        let acc_new =
-            coef.iter().rev().fold(acc_old, |acc, coef| QuadFelt::from(*coef) + alpha * acc);
+        let acc_tmp = coef
+            .iter()
+            .rev()
+            .take(4)
+            .fold(acc_old, |acc, coef| QuadFelt::from(*coef) + alpha * acc);
+        let acc_new = coef
+            .iter()
+            .rev()
+            .skip(4)
+            .fold(acc_tmp, |acc, coef| QuadFelt::from(*coef) + alpha * acc);
 
         // copy over the stack state to the next cycle changing only the accumulator values
         self.stack.copy_state(0);
         self.stack.set(ACC_HIGH_INDEX, acc_new.to_array()[1]);
         self.stack.set(ACC_LOW_INDEX, acc_new.to_array()[0]);
+
+        // set the helper registers
+        self.decoder.set_user_op_helpers(
+            Operation::HornerBase,
+            &[
+                alpha.base_element(0),
+                alpha.base_element(1),
+                k0,
+                k1,
+                acc_tmp.base_element(0),
+                acc_tmp.base_element(1),
+            ],
+        );
 
         Ok(())
     }
@@ -84,7 +111,11 @@ impl Process {
     /// Performs 4 steps of the Horner evaluation method on a polynomial with coefficients over
     /// the quadratic extension field, i.e., it computes
     ///
-    /// acc' = (((acc * alpha + c0) * alpha + c1) * alpha + c2) * alpha + c3
+    /// acc' = (acc_tmp * alpha + c2) * alpha + c3
+    ///
+    /// where
+    ///
+    /// acc_tmp = (acc * alpha + c0) * alpha + c1
     ///
     ///
     /// In other words, the intsruction computes the evaluation at alpha of the polynomial
@@ -122,21 +153,41 @@ impl Process {
     ///
     /// The instruction also makes use of the helper registers to hold the value of
     /// alpha = (alpha0, alpha1) during the course of its execution.
-    pub(super) fn op_horner_eval_ext(&mut self) -> Result<(), ExecutionError> {
+    /// The helper registers are also used in order to hold the second half of the memory word
+    /// containing (alpha0, alpha1), as well as the temporary values acc_tmp.
+    pub(super) fn op_horner_eval_ext(
+        &mut self,
+        err_ctx: &impl ErrorContext,
+    ) -> Result<(), ExecutionError> {
         // read the values of the coefficients, over the extension field, from the stack
         let coef = self.get_coeff_as_quad_ext_elements();
 
         // read the evaluation point from memory
-        let alpha = self.get_evaluation_point()?;
+        // we also read the second half of the memory word containing alpha
+        let (alpha, k0, k1) = self.get_evaluation_point(err_ctx)?;
 
-        // compute the updated accumulator value
+        // compute the temporary and updated accumulator values
         let acc_old = self.get_accumulator();
-        let acc_new = coef.iter().rev().fold(acc_old, |acc, coef| *coef + alpha * acc);
+        let acc_tmp = coef.iter().rev().take(2).fold(acc_old, |acc, coef| *coef + alpha * acc);
+        let acc_new = coef.iter().rev().skip(2).fold(acc_tmp, |acc, coef| *coef + alpha * acc);
 
         // copy over the stack state to the next cycle changing only the accumulator values
         self.stack.copy_state(0);
         self.stack.set(ACC_HIGH_INDEX, acc_new.to_array()[1]);
         self.stack.set(ACC_LOW_INDEX, acc_new.to_array()[0]);
+
+        // set the helper registers
+        self.decoder.set_user_op_helpers(
+            Operation::HornerBase,
+            &[
+                alpha.base_element(0),
+                alpha.base_element(1),
+                k0,
+                k1,
+                acc_tmp.base_element(0),
+                acc_tmp.base_element(1),
+            ],
+        );
 
         Ok(())
     }
@@ -178,18 +229,23 @@ impl Process {
     }
 
     /// Returns the evaluation point.
-    ///
-    /// Also sets the helper registers to hold the word read from memory.
-    fn get_evaluation_point(&mut self) -> Result<QuadFelt, ExecutionError> {
+    /// Also returns the second half, i.e., two field elements, that are stored next to
+    /// the evaluation point.
+    fn get_evaluation_point(
+        &mut self,
+        err_ctx: &impl ErrorContext,
+    ) -> Result<(QuadFelt, Felt, Felt), ExecutionError> {
         let ctx = self.system.ctx();
         let addr = self.stack.get(ALPHA_ADDR_INDEX);
-        let word = self.chiplets.memory.read_word(ctx, addr, self.system.clk())?;
+        let word = self
+            .chiplets
+            .memory
+            .read_word(ctx, addr, self.system.clk(), err_ctx)
+            .map_err(ExecutionError::MemoryError)?;
         let alpha_0 = word[0];
         let alpha_1 = word[1];
 
-        self.decoder.set_user_op_helpers(Operation::HornerBase, &word);
-
-        Ok(QuadFelt::new_complex(alpha_0, alpha_1))
+        Ok((QuadFelt::new(alpha_0, alpha_1), word[2], word[3]))
     }
 
     /// Reads the accumulator values.
@@ -206,13 +262,13 @@ impl Process {
 
 #[cfg(test)]
 mod tests {
-    use std::vec::Vec;
+    use alloc::vec::Vec;
 
-    use test_utils::{build_test, rand::rand_array};
-    use vm_core::{Felt, Operation, PrimeCharacteristicRing, PrimeField64, StackInputs, ZERO};
+    use miden_core::{Felt, Operation, QuadFelt, StackInputs, ZERO, mast::MastForest};
+    use miden_utils_testing::{build_test, rand::rand_array};
 
-    use super::{ACC_HIGH_INDEX, ACC_LOW_INDEX, ALPHA_ADDR_INDEX};
-    use crate::{ContextId, DefaultHost, Process, QuadFelt};
+    use super::{ACC_HIGH_INDEX, ACC_LOW_INDEX, ALPHA_ADDR_INDEX, *};
+    use crate::{ContextId, DefaultHost, Process};
 
     #[test]
     fn horner_eval_base() {
@@ -231,6 +287,7 @@ mod tests {
         let mut host = DefaultHost::default();
         let stack_inputs = StackInputs::new(inputs.to_vec()).expect("inputs length too long");
         let mut process = Process::new_dummy_with_decoder_helpers(stack_inputs);
+        let program = &MastForest::default();
 
         // --- setup memory -----------------------------------------------------------------------
         let ctx = ContextId::root();
@@ -241,12 +298,18 @@ mod tests {
         process
             .chiplets
             .memory
-            .write_word(ctx, inputs[2], process.system.clk(), alpha_mem_word)
+            .write_word(
+                ctx,
+                inputs[2].as_int().try_into().expect("Shouldn't fail by construction"),
+                process.system.clk(),
+                alpha_mem_word.into(),
+                &(),
+            )
             .unwrap();
-        process.execute_op(Operation::Noop, &mut host).unwrap();
+        process.execute_op(Operation::Noop, program, &mut host).unwrap();
 
         // --- execute HORNER_BASE operation ------------------------------------------------------
-        process.execute_op(Operation::HornerBase, &mut host).unwrap();
+        process.execute_op(Operation::HornerBase, program, &mut host).unwrap();
 
         // --- check that the top 8 stack elements were not affected ------------------------------
         let stack_state = process.stack.trace_state();
@@ -267,11 +330,19 @@ mod tests {
 
         let alpha = QuadFelt::new_complex(alpha_mem_word[0], alpha_mem_word[1]);
 
+        let acc_tmp = stack_state
+            .iter()
+            .take(8)
+            .rev()
+            .take(4)
+            .fold(acc_old, |acc, coef| QuadFelt::from(*coef) + alpha * acc);
+
         let acc_new = stack_state
             .iter()
             .take(8)
             .rev()
-            .fold(acc_old, |acc, coef| QuadFelt::from(*coef) + alpha * acc);
+            .skip(4)
+            .fold(acc_tmp, |acc, coef| QuadFelt::from(*coef) + alpha * acc);
 
         assert_eq!(acc_new.to_array()[1], stack_state[ACC_HIGH_INDEX]);
         assert_eq!(acc_new.to_array()[0], stack_state[ACC_LOW_INDEX]);
@@ -286,8 +357,8 @@ mod tests {
             alpha_mem_word[1],
             alpha_mem_word[2],
             alpha_mem_word[3],
-            ZERO,
-            ZERO,
+            acc_tmp.base_element(0),
+            acc_tmp.base_element(1),
         ];
         assert_eq!(helper_reg_expected, process.decoder.get_user_op_helpers());
     }
@@ -309,6 +380,7 @@ mod tests {
         let mut host = DefaultHost::default();
         let stack_inputs = StackInputs::new(inputs.to_vec()).expect("inputs lenght too long");
         let mut process = Process::new_dummy_with_decoder_helpers(stack_inputs);
+        let program = &MastForest::default();
 
         // --- setup memory -----------------------------------------------------------------------
         let ctx = ContextId::root();
@@ -317,12 +389,18 @@ mod tests {
         process
             .chiplets
             .memory
-            .write_word(ctx, inputs[2], process.system.clk(), alpha_mem_word)
+            .write_word(
+                ctx,
+                inputs[2].as_int().try_into().expect("Shouldn't fail by construction"),
+                process.system.clk(),
+                alpha_mem_word.into(),
+                &(),
+            )
             .unwrap();
-        process.execute_op(Operation::Noop, &mut host).unwrap();
+        process.execute_op(Operation::Noop, program, &mut host).unwrap();
 
         // --- execute HORNER_BASE operation ------------------------------------------------------
-        process.execute_op(Operation::HornerExt, &mut host).unwrap();
+        process.execute_op(Operation::HornerExt, program, &mut host).unwrap();
 
         // --- check that the top 8 stack elements were not affected ------------------------------
         let stack_state = process.stack.trace_state();
@@ -343,11 +421,16 @@ mod tests {
 
         let alpha = QuadFelt::new_complex(alpha_mem_word[0], alpha_mem_word[1]);
 
-        let acc_new = stack_state
+        let coefficients: Vec<_> = stack_state
             .chunks(2)
             .take(4)
-            .rev()
-            .fold(acc_old, |acc, coef| QuadFelt::new_complex(coef[1], coef[0]) + alpha * acc);
+            .map(|coef| QuadFelt::new(coef[1], coef[0]))
+            .collect();
+
+        let acc_tmp =
+            coefficients.iter().rev().take(2).fold(acc_old, |acc, coef| *coef + alpha * acc);
+        let acc_new =
+            coefficients.iter().rev().skip(2).fold(acc_tmp, |acc, coef| *coef + alpha * acc);
 
         assert_eq!(acc_new.to_array()[1], stack_state[ACC_HIGH_INDEX]);
         assert_eq!(acc_new.to_array()[0], stack_state[ACC_LOW_INDEX]);
@@ -362,8 +445,8 @@ mod tests {
             alpha_mem_word[1],
             alpha_mem_word[2],
             alpha_mem_word[3],
-            ZERO,
-            ZERO,
+            acc_tmp.base_element(0),
+            acc_tmp.base_element(1),
         ];
         assert_eq!(helper_reg_expected, process.decoder.get_user_op_helpers());
     }
@@ -424,7 +507,7 @@ mod tests {
         let test = build_test!(source, &inputs, &adv_stack);
         test.expect_stack(&expected);
 
-        let pub_inputs: Vec<u64> = Vec::new();
+        let pub_inputs: Vec<u64> = inputs.to_vec();
         test.prove_and_verify(pub_inputs, false);
     }
 
@@ -484,7 +567,7 @@ mod tests {
         let test = build_test!(source, &inputs, &adv_stack);
         test.expect_stack(&expected);
 
-        let pub_inputs: Vec<u64> = Vec::new();
+        let pub_inputs: Vec<u64> = inputs.to_vec();
         test.prove_and_verify(pub_inputs, false);
     }
 }

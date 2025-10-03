@@ -3,6 +3,8 @@ use core::fmt;
 
 use miden_crypto::hash::blake::Blake3_256;
 use num_traits::ToBytes;
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
 
 mod assembly_op;
 pub use assembly_op::AssemblyOp;
@@ -10,7 +12,7 @@ pub use assembly_op::AssemblyOp;
 mod debug;
 pub use debug::DebugOptions;
 
-use crate::mast::{DecoratorFingerprint, DecoratorId};
+use crate::mast::{DecoratedOpLink, DecoratorFingerprint};
 
 // DECORATORS
 // ================================================================================================
@@ -23,6 +25,8 @@ use crate::mast::{DecoratorFingerprint, DecoratorId};
 /// Executing decorators does not advance the VM clock. As such, many decorators can be executed in
 /// a single VM cycle.
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(all(feature = "arbitrary", test), miden_serde_test_macros::serde_test)]
 pub enum Decorator {
     /// Adds information about the assembly instruction at a particular index (only applicable in
     /// debug mode).
@@ -40,7 +44,7 @@ impl Decorator {
             Self::AsmOp(asm_op) => {
                 let mut bytes_to_hash = Vec::new();
                 if let Some(location) = asm_op.location() {
-                    bytes_to_hash.extend(location.path.as_bytes());
+                    bytes_to_hash.extend(location.uri.as_str().as_bytes());
                     bytes_to_hash.extend(location.start.to_u32().to_le_bytes());
                     bytes_to_hash.extend(location.end.to_u32().to_le_bytes());
                 }
@@ -70,67 +74,14 @@ impl fmt::Display for Decorator {
                 write!(f, "asmOp({}, {})", assembly_op.op(), assembly_op.num_cycles())
             },
             Self::Debug(options) => write!(f, "debug({options})"),
-            Self::Trace(trace_id) => write!(f, "trace({})", trace_id),
+            Self::Trace(trace_id) => write!(f, "trace({trace_id})"),
         }
     }
 }
 
 /// Vector consisting of a tuple of operation index (within a span block) and decorator at that
-/// index
-pub type DecoratorList = Vec<(usize, DecoratorId)>;
-
-/// Iterator used to iterate through the decorator list of a span block
-/// while executing operation batches of a span block.
-pub struct DecoratorIterator<'a> {
-    decorators: &'a DecoratorList,
-    idx: usize,
-}
-
-impl<'a> DecoratorIterator<'a> {
-    /// Returns a new instance of decorator iterator instantiated with the provided decorator list.
-    pub fn new(decorators: &'a DecoratorList) -> Self {
-        Self { decorators, idx: 0 }
-    }
-
-    /// Returns the next decorator but only if its position matches the specified position,
-    /// otherwise, None is returned.
-    #[inline(always)]
-    pub fn next_filtered(&mut self, pos: usize) -> Option<&DecoratorId> {
-        if self.idx < self.decorators.len() && self.decorators[self.idx].0 == pos {
-            self.idx += 1;
-            Some(&self.decorators[self.idx - 1].1)
-        } else {
-            None
-        }
-    }
-}
-
-impl<'a> Iterator for DecoratorIterator<'a> {
-    type Item = &'a DecoratorId;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.idx < self.decorators.len() {
-            self.idx += 1;
-            Some(&self.decorators[self.idx - 1].1)
-        } else {
-            None
-        }
-    }
-}
-
-// TYPES AND INTERFACES
-// ================================================================================================
-
-// Collection of signature schemes supported
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum SignatureKind {
-    RpoFalcon512,
-}
-
-impl fmt::Display for SignatureKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::RpoFalcon512 => write!(f, "rpo_falcon512"),
-        }
-    }
-}
+/// index.
+///
+/// Note: for `AssemblyOp` decorators, when an instruction compiles down to multiple operations,
+/// only the first operation is associated with the assembly op.
+pub type DecoratorList = Vec<DecoratedOpLink>;

@@ -11,11 +11,11 @@ use miden_air::{
         },
     },
 };
-use vm_core::{lazy_static, Field, PrimeCharacteristicRing, WORD_SIZE, PrimeField64};
+use miden_core::WORD_SIZE;
 
 use super::{
-    AUX_TRACE_RAND_ELEMENTS, CHIPLETS_AUX_TRACE_OFFSET, ExecutionTrace, Felt, 
-    NUM_RAND_ROWS, ONE, Operation, Word, ZERO, build_trace_from_ops, rand_array,
+    AUX_TRACE_RAND_ELEMENTS, CHIPLETS_BUS_AUX_TRACE_OFFSET, ExecutionTrace, Felt, FieldElement,
+    NUM_RAND_ROWS, ONE, Operation, Trace, Word, ZERO, build_trace_from_ops, rand_array,
 };
 
 /// Tests the generation of the `b_chip` bus column when only memory lookups are included. It
@@ -32,9 +32,8 @@ use super::{
 #[allow(clippy::needless_range_loop)]
 fn b_chip_trace_mem() {
     lazy_static! {
-           static ref FOUR: Felt = Felt::from_u64(4); 
+        static ref FOUR: Felt = Felt::from_u64(4);
     }
-
 
     let stack = [1, 2, 3, 4, 0];
     let word = [ONE, Felt::from_u64(2), Felt::from_u64(3), Felt::from_u64(4)];
@@ -44,20 +43,20 @@ fn b_chip_trace_mem() {
         Operation::Drop,
         Operation::Drop,
         Operation::Drop,
-        Operation::MLoad,      // read the first value of the word
-        Operation::MovDn5,     // put address 0 and space for a full word at top of stack
-        Operation::MLoadW,     // load word from address 0 to stack
-        Operation::Push(ONE),  // push a new value onto the stack
+        Operation::MLoad,       // read the first value of the word
+        Operation::MovDn5,      // put address 0 and space for a full word at top of stack
+        Operation::MLoadW,      // load word from address 0 to stack
+        Operation::Push(ONE),   // push a new value onto the stack
         Operation::Push(*FOUR), // push a new address on to the stack
-        Operation::MStore,     // store 1 at address 4
-        Operation::Drop,       // ensure the stack overflow table is empty
-        Operation::MStream,    // read 2 words starting at address 0
+        Operation::MStore,      // store 1 at address 4
+        Operation::Drop,        // ensure the stack overflow table is empty
+        Operation::MStream,     // read 2 words starting at address 0
     ];
     let trace = build_trace_from_ops(operations, &stack);
 
     let rand_elements = rand_array::<Felt, AUX_TRACE_RAND_ELEMENTS>();
     let aux_columns = trace.build_aux_trace(&rand_elements).unwrap();
-    let b_chip = aux_columns.get_column(CHIPLETS_AUX_TRACE_OFFSET);
+    let b_chip = aux_columns.get_column(CHIPLETS_BUS_AUX_TRACE_OFFSET);
 
     assert_eq!(trace.length(), b_chip.len());
     assert_eq!(ONE, b_chip[0]);
@@ -68,9 +67,15 @@ fn b_chip_trace_mem() {
 
     // The first memory request from the stack is sent when the `MStoreW` operation is executed, at
     // cycle 1, so the request is included in the next row. (The trace begins by executing `span`).
-    let value =
-        build_expected_bus_word_msg(&rand_elements, MEMORY_WRITE_WORD_LABEL, ZERO, ZERO, ONE, word);
-    let mut expected = value.inverse();
+    let value = build_expected_bus_word_msg(
+        &rand_elements,
+        MEMORY_WRITE_WORD_LABEL,
+        ZERO,
+        ZERO,
+        ONE,
+        word.into(),
+    );
+    let mut expected = value.inv();
     assert_eq!(expected, b_chip[2]);
 
     // Nothing changes after user operations that don't make requests to the Chiplets.
@@ -107,8 +112,8 @@ fn b_chip_trace_mem() {
         MEMORY_READ_WORD_LABEL,
         ZERO,
         ZERO,
-        Felt::from_u64(8),
-        word,
+        Felt::new(8),
+        word.into(),
     );
     expected *= value.inverse();
     expected *= build_expected_bus_msg_from_trace(&trace, &rand_elements, 8.into());
@@ -147,16 +152,16 @@ fn b_chip_trace_mem() {
         MEMORY_READ_WORD_LABEL,
         ZERO,
         ZERO,
-        Felt::from_u64(13),
-        word,
+        Felt::new(13),
+        word.into(),
     );
     let value2 = build_expected_bus_word_msg(
         &rand_elements,
         MEMORY_READ_WORD_LABEL,
         ZERO,
-        Felt::from_u64(4),
-        Felt::from_u64(13),
-        [ONE, ZERO, ZERO, ZERO],
+        Felt::new(4),
+        Felt::new(13),
+        [ONE, ZERO, ZERO, ZERO].into(),
     );
     expected *= (value1 * value2).inverse();
     expected *= build_expected_bus_msg_from_trace(&trace, &rand_elements, 13.into());
@@ -264,7 +269,7 @@ fn build_expected_bus_msg_from_trace(
 
         build_expected_bus_element_msg(alphas, op_label, ctx, addr, clk, word[idx as usize])
     } else if element_or_word == MEMORY_ACCESS_WORD {
-        build_expected_bus_word_msg(alphas, op_label, ctx, addr, clk, word)
+        build_expected_bus_word_msg(alphas, op_label, ctx, addr, clk, word.into())
     } else {
         panic!("invalid element_or_word value: {element_or_word}");
     }

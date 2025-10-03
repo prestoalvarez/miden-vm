@@ -1,11 +1,9 @@
 use alloc::vec::Vec;
 
+use miden_core::Felt;
 // RE-EXPORTS
 // ================================================================================================
-pub use vm_core::utils::*;
-use vm_core::{PrimeCharacteristicRing, PrimeField64};
-
-use super::Felt;
+pub use miden_core::utils::*;
 
 // HELPER FUNCTIONS
 // ================================================================================================

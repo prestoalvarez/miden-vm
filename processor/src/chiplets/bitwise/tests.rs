@@ -4,8 +4,8 @@ use miden_air::trace::chiplets::bitwise::{
     A_COL_IDX, A_COL_RANGE, B_COL_IDX, B_COL_RANGE, BITWISE_AND, BITWISE_XOR, OP_CYCLE_LEN,
     OUTPUT_COL_IDX, PREV_OUTPUT_COL_IDX, TRACE_WIDTH,
 };
-use test_utils::rand::rand_value;
-use vm_core::{ZERO, PrimeField64, PrimeCharacteristicRing};
+use miden_core::ZERO;
+use miden_utils_testing::rand::rand_value;
 
 use super::{Bitwise, Felt, TraceFragment};
 
@@ -16,14 +16,15 @@ fn bitwise_init() {
 }
 
 #[test]
+#[allow(clippy::needless_range_loop)]
 fn bitwise_and() {
     let mut bitwise = Bitwise::new();
 
     let a = rand_u32();
     let b = rand_u32();
 
-    let result = bitwise.u32and(a, b).unwrap();
-    assert_eq!(a.as_canonical_u64() & b.as_canonical_u64(), result.as_canonical_u64());
+    let result = bitwise.u32and(a, b, &()).unwrap();
+    assert_eq!(a.as_int() & b.as_int(), result.as_int());
 
     // --- check generated trace ----------------------------------------------
     let trace = build_trace(bitwise, OP_CYCLE_LEN);
@@ -48,7 +49,8 @@ fn bitwise_and() {
         let c2 = binary_and(trace[A_COL_RANGE.start + 2][i], trace[B_COL_RANGE.start + 2][i]);
         let c3 = binary_and(trace[A_COL_RANGE.start + 3][i], trace[B_COL_RANGE.start + 3][i]);
 
-        let result_4_bit = c0 + Felt::from_u64(2) * c1 + Felt::from_u64(4) * c2 + Felt::from_u64(8) * c3;
+        let result_4_bit =
+            c0 + Felt::from_u64(2) * c1 + Felt::from_u64(4) * c2 + Felt::from_u64(8) * c3;
         let result = prev_result * Felt::from_u64(16) + result_4_bit;
 
         assert_eq!(prev_result, trace[PREV_OUTPUT_COL_IDX][i]);
@@ -59,14 +61,15 @@ fn bitwise_and() {
 }
 
 #[test]
+#[allow(clippy::needless_range_loop)]
 fn bitwise_xor() {
     let mut bitwise = Bitwise::new();
 
     let a = rand_u32();
     let b = rand_u32();
 
-    let result = bitwise.u32xor(a, b).unwrap();
-    assert_eq!(a.as_canonical_u64() ^ b.as_canonical_u64(), result.as_canonical_u64());
+    let result = bitwise.u32xor(a, b, &()).unwrap();
+    assert_eq!(a.as_int() ^ b.as_int(), result.as_int());
 
     // --- check generated trace ----------------------------------------------
     let trace = build_trace(bitwise, OP_CYCLE_LEN);
@@ -91,7 +94,8 @@ fn bitwise_xor() {
         let c2 = binary_xor(trace[A_COL_RANGE.start + 2][i], trace[B_COL_RANGE.start + 2][i]);
         let c3 = binary_xor(trace[A_COL_RANGE.start + 3][i], trace[B_COL_RANGE.start + 3][i]);
 
-        let result_4_bit = c0 + Felt::from_u64(2) * c1 + Felt::from_u64(4) * c2 + Felt::from_u64(8) * c3;
+        let result_4_bit =
+            c0 + Felt::from_u64(2) * c1 + Felt::from_u64(4) * c2 + Felt::from_u64(8) * c3;
         let result = prev_result * Felt::from_u64(16) + result_4_bit;
 
         assert_eq!(prev_result, trace[PREV_OUTPUT_COL_IDX][i]);
@@ -102,6 +106,7 @@ fn bitwise_xor() {
 }
 
 #[test]
+#[allow(clippy::needless_range_loop)]
 fn bitwise_multiple() {
     let mut bitwise = Bitwise::new();
 
@@ -109,16 +114,16 @@ fn bitwise_multiple() {
     let b = [rand_u32(), rand_u32(), rand_u32()];
 
     // first operation: AND
-    let result0 = bitwise.u32and(a[0], b[0]).unwrap();
-    assert_eq!(a[0].as_canonical_u64() & b[0].as_canonical_u64(), result0.as_canonical_u64());
+    let result0 = bitwise.u32and(a[0], b[0], &()).unwrap();
+    assert_eq!(a[0].as_int() & b[0].as_int(), result0.as_int());
 
     // second operation: XOR
-    let result1 = bitwise.u32xor(a[1], b[1]).unwrap();
-    assert_eq!(a[1].as_canonical_u64() ^ b[1].as_canonical_u64(), result1.as_canonical_u64());
+    let result1 = bitwise.u32xor(a[1], b[1], &()).unwrap();
+    assert_eq!(a[1].as_int() ^ b[1].as_int(), result1.as_int());
 
     // third operation: AND
-    let result2 = bitwise.u32and(a[2], b[2]).unwrap();
-    assert_eq!(a[2].as_canonical_u64() & b[2].as_canonical_u64(), result2.as_canonical_u64());
+    let result2 = bitwise.u32and(a[2], b[2], &()).unwrap();
+    assert_eq!(a[2].as_int() & b[2].as_int(), result2.as_int());
 
     // --- check generated trace ----------------------------------------------
     let trace = build_trace(bitwise, 3 * OP_CYCLE_LEN);
@@ -141,7 +146,8 @@ fn bitwise_multiple() {
         let c2 = binary_and(trace[A_COL_RANGE.start + 2][i], trace[B_COL_RANGE.start + 2][i]);
         let c3 = binary_and(trace[A_COL_RANGE.start + 3][i], trace[B_COL_RANGE.start + 3][i]);
 
-        let result_4_bit = c0 + Felt::from_u64(2) * c1 + Felt::from_u64(4) * c2 + Felt::from_u64(8) * c3;
+        let result_4_bit =
+            c0 + Felt::from_u64(2) * c1 + Felt::from_u64(4) * c2 + Felt::from_u64(8) * c3;
         let result = prev_result * Felt::from_u64(16) + result_4_bit;
 
         assert_eq!(prev_result, trace[PREV_OUTPUT_COL_IDX][i]);
@@ -157,7 +163,8 @@ fn bitwise_multiple() {
         let c2 = binary_xor(trace[A_COL_RANGE.start + 2][i], trace[B_COL_RANGE.start + 2][i]);
         let c3 = binary_xor(trace[A_COL_RANGE.start + 3][i], trace[B_COL_RANGE.start + 3][i]);
 
-        let result_4_bit = c0 + Felt::from_u64(2) * c1 + Felt::from_u64(4) * c2 + Felt::from_u64(8) * c3;
+        let result_4_bit =
+            c0 + Felt::from_u64(2) * c1 + Felt::from_u64(4) * c2 + Felt::from_u64(8) * c3;
         let result = prev_result * Felt::from_u64(16) + result_4_bit;
 
         assert_eq!(prev_result, trace[PREV_OUTPUT_COL_IDX][i]);
@@ -173,7 +180,8 @@ fn bitwise_multiple() {
         let c2 = binary_and(trace[A_COL_RANGE.start + 2][i], trace[B_COL_RANGE.start + 2][i]);
         let c3 = binary_and(trace[A_COL_RANGE.start + 3][i], trace[B_COL_RANGE.start + 3][i]);
 
-        let result_4_bit = c0 + Felt::from_u64(2) * c1 + Felt::from_u64(4) * c2 + Felt::from_u64(8) * c3;
+        let result_4_bit =
+            c0 + Felt::from_u64(2) * c1 + Felt::from_u64(4) * c2 + Felt::from_u64(8) * c3;
         let result = prev_result * Felt::from_u64(16) + result_4_bit;
 
         assert_eq!(prev_result, trace[PREV_OUTPUT_COL_IDX][i]);
@@ -199,6 +207,7 @@ fn build_trace(bitwise: Bitwise, num_rows: usize) -> Vec<Vec<Felt>> {
 fn check_decomposition(trace: &[Vec<Felt>], start: usize, a: u64, b: u64) {
     let mut bit_offset = 28;
 
+    #[allow(clippy::needless_range_loop)]
     for i in start..start + 8 {
         let a = a >> bit_offset;
         let b = b >> bit_offset;

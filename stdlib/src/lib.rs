@@ -1,13 +1,25 @@
 #![no_std]
 
+pub mod handlers;
+
 extern crate alloc;
 
-use alloc::sync::Arc;
+use alloc::{sync::Arc, vec, vec::Vec};
 
-use assembly::{
-    Library,
-    mast::MastForest,
-    utils::{Deserializable, sync::LazyLock},
+use miden_assembly::{Library, mast::MastForest, utils::Deserializable};
+use miden_core::{EventId, Felt, Word};
+use miden_processor::{EventHandler, HostLibrary};
+use miden_utils_sync::LazyLock;
+
+use crate::handlers::{
+    falcon_div::{FALCON_DIV_EVENT_ID, handle_falcon_div},
+    keccak256::{KECCAK_HASH_MEMORY_EVENT_ID, handle_keccak_hash_memory},
+    smt_peek::{SMT_PEEK_EVENT_ID, handle_smt_peek},
+    sorted_array::{
+        LOWERBOUND_ARRAY_EVENT_ID, LOWERBOUND_KEY_VALUE_EVENT_ID, handle_lowerbound_array,
+        handle_lowerbound_key_value,
+    },
+    u64_div::{U64_DIV_EVENT_ID, handle_u64_div},
 };
 
 // STANDARD LIBRARY
@@ -29,6 +41,15 @@ impl From<StdLibrary> for Library {
     }
 }
 
+impl From<&StdLibrary> for HostLibrary {
+    fn from(stdlib: &StdLibrary) -> Self {
+        Self {
+            mast_forest: stdlib.mast_forest().clone(),
+            handlers: stdlib.handlers(),
+        }
+    }
+}
+
 impl StdLibrary {
     /// Serialized representation of the Miden standard library.
     pub const SERIALIZED: &'static [u8] =
@@ -37,6 +58,23 @@ impl StdLibrary {
     /// Returns a reference to the [MastForest] underlying the Miden standard library.
     pub fn mast_forest(&self) -> &Arc<MastForest> {
         self.0.mast_forest()
+    }
+
+    /// Returns a reference to the underlying [`Library`].
+    pub fn library(&self) -> &Library {
+        &self.0
+    }
+
+    /// List of all `EventHandlers` required to run all of the standard library.
+    pub fn handlers(&self) -> Vec<(EventId, Arc<dyn EventHandler>)> {
+        vec![
+            (KECCAK_HASH_MEMORY_EVENT_ID, Arc::new(handle_keccak_hash_memory)),
+            (SMT_PEEK_EVENT_ID, Arc::new(handle_smt_peek)),
+            (U64_DIV_EVENT_ID, Arc::new(handle_u64_div)),
+            (FALCON_DIV_EVENT_ID, Arc::new(handle_falcon_div)),
+            (LOWERBOUND_ARRAY_EVENT_ID, Arc::new(handle_lowerbound_array)),
+            (LOWERBOUND_KEY_VALUE_EVENT_ID, Arc::new(handle_lowerbound_key_value)),
+        ]
     }
 }
 
@@ -54,10 +92,6 @@ impl Default for StdLibrary {
 // FALCON SIGNATURE
 // ================================================================================================
 
-/// Event ID for pushing a Falcon signature to the advice stack.
-/// This event is used for testing purposes only.
-pub const EVENT_FALCON_SIG_TO_STACK: u32 = 3419226139;
-
 /// Signs the provided message with the provided secret key and returns the resulting signature
 /// encoded in the format required by the rpo_faclcon512::verify procedure, or `None` if the secret
 /// key is malformed due to either incorrect length or failed decoding.
@@ -73,17 +107,16 @@ pub const EVENT_FALCON_SIG_TO_STACK: u32 = 3419226139;
 ///    Miden field.
 /// 5. The nonce represented as 8 field elements.
 #[cfg(feature = "std")]
-pub fn falcon_sign(
-    sk: &[vm_core::Felt],
-    msg: vm_core::Word,
-) -> Option<alloc::vec::Vec<vm_core::Felt>> {
-    use alloc::{vec, vec::Vec};
+pub fn falcon_sign(sk: &[Felt], msg: Word) -> Option<Vec<Felt>> {
+    use alloc::vec;
 
-    use vm_core::{
+    use miden_core::{
+        Felt, PrimeCharacteristicRing,
         crypto::{
             dsa::rpo_falcon512::{Polynomial, SecretKey},
             hash::Rpo256,
-        }, utils::Deserializable, Felt, PrimeCharacteristicRing
+        },
+        utils::Deserializable,
     };
     use vm_core::PrimeField64;
 
@@ -112,7 +145,7 @@ pub fn falcon_sign(
 
     // We also need in the VM the expanded key corresponding to the public key the was provided
     // via the operand stack
-    let h = sk.compute_pub_key_poly().0;
+    let h = sk.public_key();
 
     // Lastly, for the probabilistic product routine that is part of the verification procedure,
     // we need to compute the product of the expanded key and the signature polynomial in
@@ -141,10 +174,7 @@ pub fn falcon_sign(
 }
 
 #[cfg(not(feature = "std"))]
-pub fn falcon_sign(
-    _pk_sk: &[vm_core::Felt],
-    _msg: vm_core::Word,
-) -> Option<alloc::vec::Vec<vm_core::Felt>> {
+pub fn falcon_sign(_pk_sk: &[Felt], _msg: Word) -> Option<Vec<Felt>> {
     None
 }
 
@@ -153,7 +183,7 @@ pub fn falcon_sign(
 
 #[cfg(test)]
 mod tests {
-    use assembly::LibraryPath;
+    use miden_assembly::LibraryPath;
 
     use super::*;
 

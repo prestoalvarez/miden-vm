@@ -1,10 +1,11 @@
 use alloc::{collections::BTreeMap, vec::Vec};
 
-use miden_crypto::{hash::blake::Blake3Digest, utils::collections::KvMap};
+use miden_crypto::hash::blake::Blake3Digest;
 
 use crate::mast::{
-    DecoratorId, MastForest, MastForestError, MastNode, MastNodeFingerprint, MastNodeId,
-    MultiMastForestIteratorItem, MultiMastForestNodeIter,
+    BasicBlockNode, CallNode, DecoratorId, DynNode, ExternalNode, JoinNode, LoopNode, MastForest,
+    MastForestError, MastNode, MastNodeFingerprint, MastNodeId, MultiMastForestIteratorItem,
+    MultiMastForestNodeIter, SplitNode, node::MastNodeExt,
 };
 
 #[cfg(test)]
@@ -36,10 +37,23 @@ pub(crate) struct MastForestMerger {
 impl MastForestMerger {
     /// Creates a new merger with an initially empty forest and merges all provided [`MastForest`]s
     /// into it.
+    ///
+    /// # Normalizing Behavior
+    ///
+    /// This function performs normalization of the merged forest, which:
+    /// - Remaps all node IDs to maintain the invariant that child node IDs < parent node IDs
+    /// - Creates a clean, deduplicated forest structure
+    /// - Provides consistent node ordering regardless of input
+    ///
+    /// This normalization is idempotent, but it means that even for single-forest merges, the
+    /// resulting forest may have different node IDs and digests than the input. See assembly
+    /// test `issue_1644_single_forest_merge_identity` for detailed explanation of this
+    /// behavior.
     pub(crate) fn merge<'forest>(
         forests: impl IntoIterator<Item = &'forest MastForest>,
     ) -> Result<(MastForest, MastForestRootMap), MastForestError> {
         let forests = forests.into_iter().collect::<Vec<_>>();
+
         let decorator_id_mappings = Vec::with_capacity(forests.len());
         let node_id_mappings = vec![MastForestNodeIdMap::new(); forests.len()];
 
@@ -100,6 +114,9 @@ impl MastForestMerger {
         }
         for other_forest in forests.iter() {
             self.merge_decorators(other_forest)?;
+        }
+        for other_forest in forests.iter() {
+            self.merge_error_codes(other_forest)?;
         }
 
         let iterator = MultiMastForestNodeIter::new(forests.clone());
@@ -168,15 +185,14 @@ impl MastForestMerger {
     }
 
     fn merge_advice_map(&mut self, other_forest: &MastForest) -> Result<(), MastForestError> {
-        for (digest, values) in other_forest.advice_map.iter() {
-            if let Some(stored_values) = self.mast_forest.advice_map().get(digest) {
-                if stored_values != values {
-                    return Err(MastForestError::AdviceMapKeyCollisionOnMerge(*digest));
-                }
-            } else {
-                self.mast_forest.advice_map_mut().insert(*digest, values.clone());
-            }
-        }
+        self.mast_forest
+            .advice_map
+            .merge(&other_forest.advice_map)
+            .map_err(|((key, _prev), _new)| MastForestError::AdviceMapKeyCollisionOnMerge(key))
+    }
+
+    fn merge_error_codes(&mut self, other_forest: &MastForest) -> Result<(), MastForestError> {
+        self.mast_forest.error_codes.extend(other_forest.error_codes.clone());
         Ok(())
     }
 
@@ -276,59 +292,61 @@ impl MastForestMerger {
 
         // Due to DFS postorder iteration all children of node's should have been inserted before
         // their parents which is why we can `expect` the constructor calls here.
-        let mut mapped_node = match node {
+        let mut mapped_node: MastNode = match node {
             MastNode::Join(join_node) => {
                 let first = map_node_id(join_node.first());
                 let second = map_node_id(join_node.second());
 
-                MastNode::new_join(first, second, &self.mast_forest)
+                JoinNode::new([first, second], &self.mast_forest)
                     .expect("JoinNode children should have been mapped to a lower index")
+                    .into()
             },
             MastNode::Split(split_node) => {
                 let if_branch = map_node_id(split_node.on_true());
                 let else_branch = map_node_id(split_node.on_false());
 
-                MastNode::new_split(if_branch, else_branch, &self.mast_forest)
+                SplitNode::new([if_branch, else_branch], &self.mast_forest)
                     .expect("SplitNode children should have been mapped to a lower index")
+                    .into()
             },
             MastNode::Loop(loop_node) => {
                 let body = map_node_id(loop_node.body());
-                MastNode::new_loop(body, &self.mast_forest)
+                LoopNode::new(body, &self.mast_forest)
                     .expect("LoopNode children should have been mapped to a lower index")
+                    .into()
             },
             MastNode::Call(call_node) => {
                 let callee = map_node_id(call_node.callee());
-                MastNode::new_call(callee, &self.mast_forest)
+                CallNode::new(callee, &self.mast_forest)
                     .expect("CallNode children should have been mapped to a lower index")
+                    .into()
             },
             // Other nodes are simply copied.
             MastNode::Block(basic_block_node) => {
-                MastNode::new_basic_block(
+                BasicBlockNode::new(
                     basic_block_node.operations().copied().collect(),
                     // Operation Indices of decorators stay the same while decorator IDs need to be
                     // mapped.
-                    Some(
-                        basic_block_node
-                            .decorators()
-                            .iter()
-                            .map(|(idx, decorator_id)| match map_decorator_id(decorator_id) {
-                                Ok(mapped_decorator) => Ok((*idx, mapped_decorator)),
-                                Err(err) => Err(err),
-                            })
-                            .collect::<Result<Vec<_>, _>>()?,
-                    ),
+                    basic_block_node
+                        .indexed_decorator_iter()
+                        .map(|(idx, decorator_id)| match map_decorator_id(&decorator_id) {
+                            Ok(mapped_decorator) => Ok((idx, mapped_decorator)),
+                            Err(err) => Err(err),
+                        })
+                        .collect::<Result<Vec<_>, _>>()?,
                 )
                 .expect("previously valid BasicBlockNode should still be valid")
+                .into()
             },
-            MastNode::Dyn(_) => MastNode::new_dyn(),
-            MastNode::External(external_node) => MastNode::new_external(external_node.digest()),
+            MastNode::Dyn(_) => DynNode::new_dyn().into(),
+            MastNode::External(external_node) => ExternalNode::new(external_node.digest()).into(),
         };
 
-        // Decorators must be handled specially for basic block nodes.
-        // For other node types we can handle it centrally.
-        if !mapped_node.is_basic_block() {
-            mapped_node.set_before_enter(map_decorators(node.before_enter())?);
-            mapped_node.set_after_exit(map_decorators(node.after_exit())?);
+        // Decorators must be handled specially for the op-indexed ones of basic block nodes above.
+        // For before_enter/after_exit node types we can handle it centrally.
+        {
+            mapped_node.append_before_enter(&map_decorators(node.before_enter())?);
+            mapped_node.append_after_exit(&map_decorators(node.after_exit())?);
         }
 
         Ok(mapped_node)
@@ -337,7 +355,8 @@ impl MastForestMerger {
     // HELPERS
     // ================================================================================================
 
-    /// Returns a slice of nodes in the merged forest which have the given `mast_root`.
+    /// Returns the ID of the node in the merged forest that matches the given
+    /// fingerprint, if any.
     fn lookup_node_by_fingerprint(&self, fingerprint: &MastNodeFingerprint) -> Option<MastNodeId> {
         self.node_id_by_hash.get(fingerprint).copied()
     }

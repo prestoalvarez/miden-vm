@@ -7,20 +7,21 @@ use miden_crypto::{ExtensionField, PrimeCharacteristicRing, PrimeField64};
 
 // RE-EXPORTS
 // ================================================================================================
-pub use miden_crypto::utils::{
-    ByteReader, ByteWriter, Deserializable, DeserializationError, Serializable, SliceReader,
-    collections, uninit_vector,
+pub use miden_crypto::{
+    hash::blake::{Blake3_256, Blake3Digest},
+    utils::{
+        ByteReader, ByteWriter, Deserializable, DeserializationError, Serializable, SliceReader,
+        uninit_vector,
+    },
 };
 #[cfg(feature = "std")]
 pub use winter_utils::ReadAdapter;
 pub use winter_utils::group_slice_elements;
 
-pub mod sync;
-
-use super::Felt;
+use crate::{Felt, Word};
 
 pub mod math {
-    pub use math::batch_inversion;
+    pub use winter_math::batch_inversion;
 }
 
 // TO ELEMENTS
@@ -40,6 +41,22 @@ impl ToElements for Vec<u64> {
     fn to_elements(&self) -> Vec<Felt> {
         self.iter().map(|&v| Felt::from_u64(v)).collect()
     }
+}
+
+// TO WORD
+// ================================================================================================
+
+/// Hashes the provided string using the BLAKE3 hash function and converts the resulting digest into
+/// a [`Word`].
+pub fn hash_string_to_word<'a>(value: impl Into<&'a str>) -> Word {
+    let digest_bytes: [u8; 32] = Blake3_256::hash(value.into().as_bytes()).into();
+    [
+        Felt::new(u64::from_le_bytes(digest_bytes[0..8].try_into().unwrap())),
+        Felt::new(u64::from_le_bytes(digest_bytes[8..16].try_into().unwrap())),
+        Felt::new(u64::from_le_bytes(digest_bytes[16..24].try_into().unwrap())),
+        Felt::new(u64::from_le_bytes(digest_bytes[24..32].try_into().unwrap())),
+    ]
+    .into()
 }
 
 // INTO BYTES
@@ -123,7 +140,7 @@ fn debug_assert_is_checked() {
     // downstream.
     //
     // for reference, check
-    // https://github.com/0xPolygonMiden/miden-vm/issues/433
+    // https://github.com/0xMiden/miden-vm/issues/433
     debug_assert!(false);
 }
 

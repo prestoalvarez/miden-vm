@@ -1,12 +1,14 @@
+use alloc::vec::Vec;
+
 use miden_air::trace::{
     AUX_TRACE_RAND_ELEMENTS,
     decoder::{P1_COL_IDX, P2_COL_IDX, P3_COL_IDX},
 };
-use test_utils::rand::rand_array;
-use vm_core::{
-    ExtensionField, Field, ONE, Operation, PrimeCharacteristicRing, Program, Word, ZERO,
-    mast::{MastForest, MastNode},
+use miden_core::{
+    FieldElement, ONE, Operation, Program, Word, ZERO,
+    mast::{MastForest, MastNodeExt},
 };
+use miden_utils_testing::rand::rand_array;
 
 use super::{
     super::{
@@ -17,7 +19,7 @@ use super::{
     Felt,
 };
 use crate::{
-    ContextId,
+    BasicBlockNode, ContextId, JoinNode,
     decoder::{BlockHashTableRow, build_op_group},
 };
 
@@ -73,8 +75,8 @@ fn decoder_p1_join() {
     let program = {
         let mut mast_forest = MastForest::new();
 
-        let basic_block_1_id = mast_forest.add_block(vec![Operation::Mul], None).unwrap();
-        let basic_block_2_id = mast_forest.add_block(vec![Operation::Add], None).unwrap();
+        let basic_block_1_id = mast_forest.add_block(vec![Operation::Mul], Vec::new()).unwrap();
+        let basic_block_2_id = mast_forest.add_block(vec![Operation::Add], Vec::new()).unwrap();
         let join_id = mast_forest.add_join(basic_block_1_id, basic_block_2_id).unwrap();
         mast_forest.make_root(join_id);
 
@@ -140,8 +142,8 @@ fn decoder_p1_split() {
     let program = {
         let mut mast_forest = MastForest::new();
 
-        let basic_block_1_id = mast_forest.add_block(vec![Operation::Mul], None).unwrap();
-        let basic_block_2_id = mast_forest.add_block(vec![Operation::Add], None).unwrap();
+        let basic_block_1_id = mast_forest.add_block(vec![Operation::Mul], Vec::new()).unwrap();
+        let basic_block_2_id = mast_forest.add_block(vec![Operation::Add], Vec::new()).unwrap();
         let split_id = mast_forest.add_split(basic_block_1_id, basic_block_2_id).unwrap();
         mast_forest.make_root(split_id);
 
@@ -194,8 +196,8 @@ fn decoder_p1_loop_with_repeat() {
     let program = {
         let mut mast_forest = MastForest::new();
 
-        let basic_block_1_id = mast_forest.add_block(vec![Operation::Pad], None).unwrap();
-        let basic_block_2_id = mast_forest.add_block(vec![Operation::Drop], None).unwrap();
+        let basic_block_1_id = mast_forest.add_block(vec![Operation::Pad], Vec::new()).unwrap();
+        let basic_block_2_id = mast_forest.add_block(vec![Operation::Drop], Vec::new()).unwrap();
         let join_id = mast_forest.add_join(basic_block_1_id, basic_block_2_id).unwrap();
         let loop_node_id = mast_forest.add_loop(join_id).unwrap();
         mast_forest.make_root(loop_node_id);
@@ -319,7 +321,7 @@ fn decoder_p2_span_with_respan() {
         let mut mast_forest = MastForest::new();
 
         let (ops, _) = build_span_with_respan_ops();
-        let basic_block_id = mast_forest.add_block(ops, None).unwrap();
+        let basic_block_id = mast_forest.add_block(ops, Vec::new()).unwrap();
         mast_forest.make_root(basic_block_id);
 
         Program::new(mast_forest.into(), basic_block_id)
@@ -329,9 +331,8 @@ fn decoder_p2_span_with_respan() {
     let aux_columns = trace.build_aux_trace(&alphas).unwrap();
     let p2 = aux_columns.get_column(P2_COL_IDX);
 
-    let row_values = [
-        BlockHashTableRow::new_test(ZERO, program.hash().into(), false, false).collapse(&alphas)
-    ];
+    let row_values =
+        [BlockHashTableRow::new_test(ZERO, program.hash(), false, false).collapse(&alphas)];
 
     // make sure the first entry is initialized to program hash
     let mut expected_value = row_values[0];
@@ -355,13 +356,13 @@ fn decoder_p2_span_with_respan() {
 fn decoder_p2_join() {
     let mut mast_forest = MastForest::new();
 
-    let basic_block_1 = MastNode::new_basic_block(vec![Operation::Mul], None).unwrap();
+    let basic_block_1 = BasicBlockNode::new(vec![Operation::Mul], Vec::new()).unwrap();
     let basic_block_1_id = mast_forest.add_node(basic_block_1.clone()).unwrap();
 
-    let basic_block_2 = MastNode::new_basic_block(vec![Operation::Add], None).unwrap();
+    let basic_block_2 = BasicBlockNode::new(vec![Operation::Add], Vec::new()).unwrap();
     let basic_block_2_id = mast_forest.add_node(basic_block_2.clone()).unwrap();
 
-    let join = MastNode::new_join(basic_block_1_id, basic_block_2_id, &mast_forest).unwrap();
+    let join = JoinNode::new([basic_block_1_id, basic_block_2_id], &mast_forest).unwrap();
     let join_id = mast_forest.add_node(join.clone()).unwrap();
     mast_forest.make_root(join_id);
 
@@ -373,11 +374,9 @@ fn decoder_p2_join() {
     let p2 = aux_columns.get_column(P2_COL_IDX);
 
     let row_values = [
-        BlockHashTableRow::new_test(ZERO, join.digest().into(), false, false).collapse(&alphas),
-        BlockHashTableRow::new_test(ONE, basic_block_1.digest().into(), true, false)
-            .collapse(&alphas),
-        BlockHashTableRow::new_test(ONE, basic_block_2.digest().into(), false, false)
-            .collapse(&alphas),
+        BlockHashTableRow::new_test(ZERO, join.digest(), false, false).collapse(&alphas),
+        BlockHashTableRow::new_test(ONE, basic_block_1.digest(), true, false).collapse(&alphas),
+        BlockHashTableRow::new_test(ONE, basic_block_2.digest(), false, false).collapse(&alphas),
     ];
 
     // make sure the first entry is initialized to program hash
@@ -421,9 +420,9 @@ fn decoder_p2_split_true() {
     // build program
     let mut mast_forest = MastForest::new();
 
-    let basic_block_1 = MastNode::new_basic_block(vec![Operation::Mul], None).unwrap();
+    let basic_block_1 = BasicBlockNode::new(vec![Operation::Mul], Vec::new()).unwrap();
     let basic_block_1_id = mast_forest.add_node(basic_block_1.clone()).unwrap();
-    let basic_block_2_id = mast_forest.add_block(vec![Operation::Add], None).unwrap();
+    let basic_block_2_id = mast_forest.add_block(vec![Operation::Add], Vec::new()).unwrap();
     let split_id = mast_forest.add_split(basic_block_1_id, basic_block_2_id).unwrap();
     mast_forest.make_root(split_id);
 
@@ -436,9 +435,8 @@ fn decoder_p2_split_true() {
     let p2 = aux_columns.get_column(P2_COL_IDX);
 
     let row_values = [
-        BlockHashTableRow::new_test(ZERO, program.hash().into(), false, false).collapse(&alphas),
-        BlockHashTableRow::new_test(ONE, basic_block_1.digest().into(), false, false)
-            .collapse(&alphas),
+        BlockHashTableRow::new_test(ZERO, program.hash(), false, false).collapse(&alphas),
+        BlockHashTableRow::new_test(ONE, basic_block_1.digest(), false, false).collapse(&alphas),
     ];
 
     // make sure the first entry is initialized to program hash
@@ -474,10 +472,10 @@ fn decoder_p2_split_false() {
     // build program
     let mut mast_forest = MastForest::new();
 
-    let basic_block_1 = MastNode::new_basic_block(vec![Operation::Mul], None).unwrap();
+    let basic_block_1 = BasicBlockNode::new(vec![Operation::Mul], Vec::new()).unwrap();
     let basic_block_1_id = mast_forest.add_node(basic_block_1.clone()).unwrap();
 
-    let basic_block_2 = MastNode::new_basic_block(vec![Operation::Add], None).unwrap();
+    let basic_block_2 = BasicBlockNode::new(vec![Operation::Add], Vec::new()).unwrap();
     let basic_block_2_id = mast_forest.add_node(basic_block_2.clone()).unwrap();
 
     let split_id = mast_forest.add_split(basic_block_1_id, basic_block_2_id).unwrap();
@@ -492,9 +490,8 @@ fn decoder_p2_split_false() {
     let p2 = aux_columns.get_column(P2_COL_IDX);
 
     let row_values = [
-        BlockHashTableRow::new_test(ZERO, program.hash().into(), false, false).collapse(&alphas),
-        BlockHashTableRow::new_test(ONE, basic_block_2.digest().into(), false, false)
-            .collapse(&alphas),
+        BlockHashTableRow::new_test(ZERO, program.hash(), false, false).collapse(&alphas),
+        BlockHashTableRow::new_test(ONE, basic_block_2.digest(), false, false).collapse(&alphas),
     ];
 
     // make sure the first entry is initialized to program hash
@@ -530,13 +527,13 @@ fn decoder_p2_loop_with_repeat() {
     // build program
     let mut mast_forest = MastForest::new();
 
-    let basic_block_1 = MastNode::new_basic_block(vec![Operation::Pad], None).unwrap();
+    let basic_block_1 = BasicBlockNode::new(vec![Operation::Pad], Vec::new()).unwrap();
     let basic_block_1_id = mast_forest.add_node(basic_block_1.clone()).unwrap();
 
-    let basic_block_2 = MastNode::new_basic_block(vec![Operation::Drop], None).unwrap();
+    let basic_block_2 = BasicBlockNode::new(vec![Operation::Drop], Vec::new()).unwrap();
     let basic_block_2_id = mast_forest.add_node(basic_block_2.clone()).unwrap();
 
-    let join = MastNode::new_join(basic_block_1_id, basic_block_2_id, &mast_forest).unwrap();
+    let join = JoinNode::new([basic_block_1_id, basic_block_2_id], &mast_forest).unwrap();
     let join_id = mast_forest.add_node(join.clone()).unwrap();
 
     let loop_node_id = mast_forest.add_loop(join_id).unwrap();
@@ -553,16 +550,12 @@ fn decoder_p2_loop_with_repeat() {
     let a_9 = Felt::from_u64(9); // address of the JOIN block in the first iteration
     let a_33 = Felt::from_u64(33); // address of the JOIN block in the second iteration
     let row_values = [
-        BlockHashTableRow::new_test(ZERO, program.hash().into(), false, false).collapse(&alphas),
-        BlockHashTableRow::new_test(ONE, join.digest().into(), false, true).collapse(&alphas),
-        BlockHashTableRow::new_test(a_9, basic_block_1.digest().into(), true, false)
-            .collapse(&alphas),
-        BlockHashTableRow::new_test(a_9, basic_block_2.digest().into(), false, false)
-            .collapse(&alphas),
-        BlockHashTableRow::new_test(a_33, basic_block_1.digest().into(), true, false)
-            .collapse(&alphas),
-        BlockHashTableRow::new_test(a_33, basic_block_2.digest().into(), false, false)
-            .collapse(&alphas),
+        BlockHashTableRow::new_test(ZERO, program.hash(), false, false).collapse(&alphas),
+        BlockHashTableRow::new_test(ONE, join.digest(), false, true).collapse(&alphas),
+        BlockHashTableRow::new_test(a_9, basic_block_1.digest(), true, false).collapse(&alphas),
+        BlockHashTableRow::new_test(a_9, basic_block_2.digest(), false, false).collapse(&alphas),
+        BlockHashTableRow::new_test(a_33, basic_block_1.digest(), true, false).collapse(&alphas),
+        BlockHashTableRow::new_test(a_33, basic_block_2.digest(), false, false).collapse(&alphas),
     ];
 
     // make sure the first entry is initialized to program hash
@@ -827,7 +820,7 @@ impl BlockStackTableRow {
             parent_id,
             is_loop,
             parent_ctx: ContextId::root(),
-            parent_fn_hash: vm_core::EMPTY_WORD,
+            parent_fn_hash: miden_core::EMPTY_WORD,
             parent_fmp: ZERO,
             parent_stack_depth: 0,
             parent_next_overflow_addr: ZERO,

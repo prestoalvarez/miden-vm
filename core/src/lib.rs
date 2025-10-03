@@ -50,7 +50,6 @@ assertion failed: `(left matches right)`
 }
 
 pub mod chiplets;
-pub mod debuginfo;
 pub mod errors;
 
 mod program;
@@ -58,18 +57,13 @@ pub use program::{Program, ProgramInfo};
 
 mod kernel;
 pub use kernel::Kernel;
-pub use miden_crypto::hash::rpo::RpoPermutation256;
-pub use miden_crypto::{
-    BasedVectorSpace, BinomialExtensionField, EMPTY_WORD, ExtensionField, Felt, Field, ONE,
-    PrimeCharacteristicRing, PrimeField64, WORD_SIZE, Word, ZERO, batch_multiplicative_inverse,
-    batch_multiplicative_inverse_general,
-};
+pub use miden_crypto::{EMPTY_WORD, ONE, WORD_SIZE, Word, ZERO, word::LexicographicWord};
 pub mod crypto {
     pub mod merkle {
         pub use miden_crypto::merkle::{
-            DefaultMerkleStore, EmptySubtreeRoots, InnerNodeInfo, LeafIndex, MerkleError,
-            MerklePath, MerkleStore, MerkleTree, Mmr, MmrPeaks, NodeIndex, PartialMerkleTree,
-            RecordingMerkleStore, SMT_DEPTH, SimpleSmt, Smt, SmtProof, SmtProofError, StoreNode,
+            EmptySubtreeRoots, InnerNodeInfo, LeafIndex, MerkleError, MerklePath, MerkleStore,
+            MerkleTree, Mmr, MmrPeaks, NodeIndex, PartialMerkleTree, SMT_DEPTH, SimpleSmt, Smt,
+            SmtProof, SmtProofError, StoreNode,
         };
     }
 
@@ -77,8 +71,9 @@ pub mod crypto {
         pub use miden_crypto::hash::{
             Digest, ElementHasher, Hasher,
             blake::{Blake3_160, Blake3_192, Blake3_256, Blake3Digest},
-            rpo::{Rpo256, RpoDigest},
-            rpx::{Rpx256, RpxDigest},
+            poseidon2::Poseidon2,
+            rpo::Rpo256,
+            rpx::Rpx256,
         };
     }
 
@@ -94,14 +89,13 @@ pub mod crypto {
 }
 
 pub mod mast;
-/*
-pub use math::{
+
+pub use winter_math::{
     ExtensionOf, FieldElement, StarkField, ToElements,
     fields::{QuadExtension, f64::BaseElement as Felt},
     polynom,
 };
- */
-pub use lazy_static::lazy_static;
+pub type QuadFelt = QuadExtension<Felt>;
 
 pub mod prettier {
     pub use miden_formatting::{prettier::*, pretty_via_display, pretty_via_to_string};
@@ -124,12 +118,14 @@ pub mod prettier {
 
 mod operations;
 pub use operations::{
-    AssemblyOp, DebugOptions, Decorator, DecoratorIterator, DecoratorList, Operation,
-    SignatureKind, opcode_constants::*,
+    AssemblyOp, DebugOptions, Decorator, DecoratorList, Operation, opcode_constants::*,
 };
 
 pub mod stack;
 pub use stack::{StackInputs, StackOutputs};
+
+mod event_id;
+pub use event_id::EventId;
 
 pub mod sys_events;
 

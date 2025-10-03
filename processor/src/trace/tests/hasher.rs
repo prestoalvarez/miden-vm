@@ -3,10 +3,11 @@ use alloc::vec::Vec;
 use miden_air::trace::{
     AUX_TRACE_RAND_ELEMENTS, chiplets::hasher::P1_COL_IDX, main_trace::MainTrace,
 };
-use rstest::rstest;
-use vm_core::{
-    crypto::merkle::{MerkleStore, MerkleTree, NodeIndex}, ExtensionField, PrimeCharacteristicRing, PrimeField64, Field
+use miden_core::{
+    FieldElement,
+    crypto::merkle::{MerkleStore, MerkleTree, NodeIndex},
 };
+use rstest::rstest;
 
 use super::{
     super::NUM_RAND_ROWS, AdviceInputs, Felt, ONE, Operation, Word, ZERO,
@@ -28,15 +29,15 @@ fn hasher_p1_mp_verify(#[case] index: u64) {
 
     // build program inputs
     let mut init_stack = vec![];
-    append_word(&mut init_stack, node.into());
+    append_word(&mut init_stack, node);
     init_stack.extend_from_slice(&[depth, index]);
-    append_word(&mut init_stack, tree.root().into());
+    append_word(&mut init_stack, tree.root());
     init_stack.reverse();
     let stack_inputs = StackInputs::try_from_ints(init_stack).unwrap();
     let advice_inputs = AdviceInputs::default().with_merkle_store(store);
 
     // build execution trace and extract the sibling table column from it
-    let ops = vec![Operation::MpVerify(0)];
+    let ops = vec![Operation::MpVerify(ZERO)];
     let trace = build_trace_from_ops_with_inputs(ops, stack_inputs, advice_inputs);
     let alphas = rand_array::<Felt, AUX_TRACE_RAND_ELEMENTS>();
     let aux_columns = trace.build_aux_trace(&alphas).unwrap();
@@ -60,9 +61,9 @@ fn hasher_p1_mr_update(#[case] index: u64) {
 
     // build program inputs
     let mut init_stack = vec![];
-    append_word(&mut init_stack, old_node.into());
+    append_word(&mut init_stack, old_node);
     init_stack.extend_from_slice(&[3, index]);
-    append_word(&mut init_stack, tree.root().into());
+    append_word(&mut init_stack, tree.root());
     append_word(&mut init_stack, new_node);
 
     init_stack.reverse();
@@ -78,11 +79,9 @@ fn hasher_p1_mr_update(#[case] index: u64) {
     let p1 = aux_columns.get_column(P1_COL_IDX);
 
     let row_values = [
-        SiblingTableRow::new(Felt::from_u64(index), path[0].into()).to_value(&trace.main_trace, &alphas),
-        SiblingTableRow::new(Felt::from_u64(index >> 1), path[1].into())
-            .to_value(&trace.main_trace, &alphas),
-        SiblingTableRow::new(Felt::from_u64(index >> 2), path[2].into())
-            .to_value(&trace.main_trace, &alphas),
+        SiblingTableRow::new(Felt::new(index), path[0]).to_value(&trace.main_trace, &alphas),
+        SiblingTableRow::new(Felt::new(index >> 1), path[1]).to_value(&trace.main_trace, &alphas),
+        SiblingTableRow::new(Felt::new(index >> 2), path[2]).to_value(&trace.main_trace, &alphas),
     ];
 
     // make sure the first entry is ONE
@@ -167,7 +166,7 @@ fn init_leaves(values: &[u64]) -> Vec<Word> {
 }
 
 fn init_leaf(value: u64) -> Word {
-    [Felt::from_u64(value), ZERO, ZERO, ZERO]
+    [Felt::new(value), ZERO, ZERO, ZERO].into()
 }
 
 fn append_word(target: &mut Vec<u64>, word: Word) {
@@ -191,11 +190,7 @@ impl SiblingTableRow {
 
     /// Reduces this row to a single field element in the field specified by E. This requires
     /// at least 6 alpha values.
-    pub fn to_value<E: ExtensionField<Felt>>(
-        &self,
-        _main_trace: &MainTrace,
-        alphas: &[E],
-    ) -> E {
+    pub fn to_value<E: ExtensionField<Felt>>(&self, _main_trace: &MainTrace, alphas: &[E]) -> E {
         // when the least significant bit of the index is 0, the sibling will be in the 3rd word
         // of the hasher state, and when the least significant bit is 1, it will be in the 2nd
         // word. we compute the value in this way to make constraint evaluation a bit easier since

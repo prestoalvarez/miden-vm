@@ -10,16 +10,21 @@ use miden_air::{
         },
     },
 };
-use vm_core::{
-    lazy_static, mast::{
-        BasicBlockNode, CallNode, DynNode, JoinNode, LoopNode, MastForest, SplitNode, OP_BATCH_SIZE
-    }, stack::MIN_STACK_DEPTH, AssemblyOp, PrimeCharacteristicRing, PrimeField64
+#[cfg(test)]
+use miden_core::mast::OP_GROUP_SIZE;
+use miden_core::{
+    AssemblyOp,
+    mast::{
+        BasicBlockNode, CallNode, DynNode, JoinNode, LoopNode, MastForest, MastNodeExt,
+        OP_BATCH_SIZE, SplitNode,
+    },
+    stack::MIN_STACK_DEPTH,
 };
 
 use super::{
     EMPTY_WORD, ExecutionError, Felt, MIN_TRACE_LEN, ONE, OpBatch, Operation, Process, Word, ZERO,
 };
-use crate::Host;
+use crate::{SyncHost, errors::ErrorContext};
 
 mod trace;
 use trace::DecoderTrace;
@@ -29,7 +34,7 @@ pub use aux_trace::AuxTraceBuilder;
 #[cfg(test)]
 pub use aux_trace::BlockHashTableRow;
 
-mod block_stack;
+pub mod block_stack;
 use block_stack::{BlockStack, BlockType, ExecutionContextInfo};
 #[cfg(test)]
 use miden_air::trace::decoder::NUM_USER_OP_HELPERS;
@@ -42,7 +47,7 @@ mod tests;
 
 //const HASH_CYCLE_LEN: Felt = Felt::from_u8(8);
 // TODO(Al)
-lazy_static!{
+lazy_static! {
     static ref HASH_CYCLE_LEN: Felt = Felt::from_u8(8);
 }
 
@@ -54,7 +59,7 @@ impl Process {
     // --------------------------------------------------------------------------------------------
 
     /// Starts decoding of a JOIN node.
-    pub(super) fn start_join_node<H: Host>(
+    pub(super) fn start_join_node<H: SyncHost>(
         &mut self,
         node: &JoinNode,
         program: &MastForest,
@@ -66,13 +71,11 @@ impl Process {
         let child1_hash = program
             .get_node_by_id(node.first())
             .ok_or(ExecutionError::MastNodeNotFoundInForest { node_id: node.first() })?
-            .digest()
-            .into();
+            .digest();
         let child2_hash = program
             .get_node_by_id(node.second())
             .ok_or(ExecutionError::MastNodeNotFoundInForest { node_id: node.second() })?
-            .digest()
-            .into();
+            .digest();
 
         let (addr, hashed_block) = self.chiplets.hasher.hash_control_block(
             child1_hash,
@@ -81,25 +84,26 @@ impl Process {
             node.digest(),
         );
 
-        debug_assert_eq!(node.digest(), hashed_block.into());
+        debug_assert_eq!(node.digest(), hashed_block);
 
         // start decoding the JOIN block; this appends a row with JOIN operation to the decoder
         // trace. when JOIN operation is executed, the rest of the VM state does not change
         self.decoder.start_join(child1_hash, child2_hash, addr);
-        self.execute_op(Operation::Noop, host)
+        self.execute_op(Operation::Noop, program, host)
     }
 
     ///  Ends decoding of a JOIN node.
-    pub(super) fn end_join_node<H: Host>(
+    pub(super) fn end_join_node<H: SyncHost>(
         &mut self,
         node: &JoinNode,
+        program: &MastForest,
         host: &mut H,
     ) -> Result<(), ExecutionError> {
         // this appends a row with END operation to the decoder trace. when END operation is
         // executed the rest of the VM state does not change
-        self.decoder.end_control_block(node.digest().into());
+        self.decoder.end_control_block(node.digest());
 
-        self.execute_op(Operation::Noop, host)
+        self.execute_op(Operation::Noop, program, host)
     }
 
     // SPLIT NODE
@@ -107,7 +111,7 @@ impl Process {
 
     /// Starts decoding a SPLIT node. This also pops the value from the top of the stack and
     /// returns it.
-    pub(super) fn start_split_node<H: Host>(
+    pub(super) fn start_split_node<H: SyncHost>(
         &mut self,
         node: &SplitNode,
         program: &MastForest,
@@ -121,13 +125,11 @@ impl Process {
         let child1_hash = program
             .get_node_by_id(node.on_true())
             .ok_or(ExecutionError::MastNodeNotFoundInForest { node_id: node.on_true() })?
-            .digest()
-            .into();
+            .digest();
         let child2_hash = program
             .get_node_by_id(node.on_false())
             .ok_or(ExecutionError::MastNodeNotFoundInForest { node_id: node.on_false() })?
-            .digest()
-            .into();
+            .digest();
         let (addr, hashed_block) = self.chiplets.hasher.hash_control_block(
             child1_hash,
             child2_hash,
@@ -135,26 +137,27 @@ impl Process {
             node.digest(),
         );
 
-        debug_assert_eq!(node.digest(), hashed_block.into());
+        debug_assert_eq!(node.digest(), hashed_block);
 
         // start decoding the SPLIT block. this appends a row with SPLIT operation to the decoder
         // trace. we also pop the value off the top of the stack and return it.
         self.decoder.start_split(child1_hash, child2_hash, addr);
-        self.execute_op(Operation::Drop, host)?;
+        self.execute_op(Operation::Drop, program, host)?;
         Ok(condition)
     }
 
     /// Ends decoding of a SPLIT node.
-    pub(super) fn end_split_node<H: Host>(
+    pub(super) fn end_split_node<H: SyncHost>(
         &mut self,
         block: &SplitNode,
+        program: &MastForest,
         host: &mut H,
     ) -> Result<(), ExecutionError> {
         // this appends a row with END operation to the decoder trace. when END operation is
         // executed the rest of the VM state does not change
-        self.decoder.end_control_block(block.digest().into());
+        self.decoder.end_control_block(block.digest());
 
-        self.execute_op(Operation::Noop, host)
+        self.execute_op(Operation::Noop, program, host)
     }
 
     // LOOP NODE
@@ -162,7 +165,7 @@ impl Process {
 
     /// Starts decoding a LOOP node. This also pops the value from the top of the stack and
     /// returns it.
-    pub(super) fn start_loop_node<H: Host>(
+    pub(super) fn start_loop_node<H: SyncHost>(
         &mut self,
         node: &LoopNode,
         program: &MastForest,
@@ -177,8 +180,7 @@ impl Process {
         let body_hash = program
             .get_node_by_id(node.body())
             .ok_or(ExecutionError::MastNodeNotFoundInForest { node_id: node.body() })?
-            .digest()
-            .into();
+            .digest();
 
         let (addr, hashed_block) = self.chiplets.hasher.hash_control_block(
             body_hash,
@@ -187,7 +189,7 @@ impl Process {
             node.digest(),
         );
 
-        debug_assert_eq!(node.digest(), hashed_block.into());
+        debug_assert_eq!(node.digest(), hashed_block);
 
         // start decoding the LOOP block; this appends a row with LOOP operation to the decoder
         // trace, but if the value on the top of the stack is not ONE, the block is not marked
@@ -195,20 +197,21 @@ impl Process {
         // basically, if the top of the stack is ZERO, a LOOP operation should be immediately
         // followed by an END operation.
         self.decoder.start_loop(body_hash, addr, condition);
-        self.execute_op(Operation::Drop, host)?;
+        self.execute_op(Operation::Drop, program, host)?;
         Ok(condition)
     }
 
     /// Ends decoding of a LOOP block. If pop_stack is set to true, this also removes the
     /// value at the top of the stack.
-    pub(super) fn end_loop_node<H: Host>(
+    pub(super) fn end_loop_node<H: SyncHost>(
         &mut self,
         node: &LoopNode,
         pop_stack: bool,
+        program: &MastForest,
         host: &mut H,
     ) -> Result<(), ExecutionError> {
         // this appends a row with END operation to the decoder trace.
-        self.decoder.end_control_block(node.digest().into());
+        self.decoder.end_control_block(node.digest());
 
         // if we are exiting a loop, we also need to pop the top value off the stack (and this
         // value must be ZERO - otherwise, we should have stayed in the loop). but, if we never
@@ -219,9 +222,9 @@ impl Process {
             #[cfg(debug_assertions)]
             debug_assert_eq!(ZERO, self.stack.peek());
 
-            self.execute_op(Operation::Drop, host)
+            self.execute_op(Operation::Drop, program, host)
         } else {
-            self.execute_op(Operation::Noop, host)
+            self.execute_op(Operation::Noop, program, host)
         }
     }
 
@@ -229,7 +232,7 @@ impl Process {
     // --------------------------------------------------------------------------------------------
 
     /// Starts decoding of a CALL or a SYSCALL node.
-    pub(super) fn start_call_node<H: Host>(
+    pub(super) fn start_call_node<H: SyncHost>(
         &mut self,
         node: &CallNode,
         program: &MastForest,
@@ -241,8 +244,7 @@ impl Process {
         let callee_hash = program
             .get_node_by_id(node.callee())
             .ok_or(ExecutionError::MastNodeNotFoundInForest { node_id: node.callee() })?
-            .digest()
-            .into();
+            .digest();
 
         let (addr, hashed_block) = self.chiplets.hasher.hash_control_block(
             callee_hash,
@@ -251,7 +253,7 @@ impl Process {
             node.digest(),
         );
 
-        debug_assert_eq!(node.digest(), hashed_block.into());
+        debug_assert_eq!(node.digest(), hashed_block);
 
         // start new execution context for the operand stack. this has the effect of resetting
         // stack depth to 16.
@@ -279,27 +281,26 @@ impl Process {
         }
 
         // the rest of the VM state does not change
-        self.execute_op(Operation::Noop, host)
+        self.execute_op(Operation::Noop, program, host)
     }
 
     /// Ends decoding of a CALL or a SYSCALL block.
-    pub(super) fn end_call_node<H: Host>(
+    pub(super) fn end_call_node<H: SyncHost>(
         &mut self,
         node: &CallNode,
+        program: &MastForest,
         host: &mut H,
+        err_ctx: &impl ErrorContext,
     ) -> Result<(), ExecutionError> {
         // when a CALL block ends, stack depth must be exactly 16
         let stack_depth = self.stack.depth();
         if stack_depth > MIN_STACK_DEPTH {
-            return Err(ExecutionError::InvalidStackDepthOnReturn(stack_depth));
+            return Err(ExecutionError::invalid_stack_depth_on_return(stack_depth, err_ctx));
         }
 
         // this appends a row with END operation to the decoder trace; the returned value contains
         // information about the execution context prior to execution of the CALL block
-        let ctx_info = self
-            .decoder
-            .end_control_block(node.digest().into())
-            .expect("no execution context");
+        let ctx_info = self.decoder.end_control_block(node.digest()).expect("no execution context");
 
         // when returning from a function call or a syscall, restore the context of the system
         // registers and the operand stack to what it was prior to the call.
@@ -308,13 +309,10 @@ impl Process {
             ctx_info.parent_fmp,
             ctx_info.parent_fn_hash,
         );
-        self.stack.restore_context(
-            ctx_info.parent_stack_depth as usize,
-            ctx_info.parent_next_overflow_addr,
-        );
+        self.stack.restore_context(ctx_info.parent_stack_depth as usize);
 
         // the rest of the VM state does not change
-        self.execute_op(Operation::Noop, host)
+        self.execute_op(Operation::Noop, program, host)
     }
 
     // DYN NODE
@@ -324,18 +322,23 @@ impl Process {
     ///
     /// Note: even though we will write the callee hash to h[0..4] for the chiplets bus and block
     /// hash table, the issued hash request is still hash([ZERO; 8]).
-    pub(super) fn start_dyn_node<H: Host>(
+    pub(super) fn start_dyn_node<H: SyncHost>(
         &mut self,
         dyn_node: &DynNode,
+        program: &MastForest,
         host: &mut H,
+        err_ctx: &impl ErrorContext,
     ) -> Result<Word, ExecutionError> {
         debug_assert!(!dyn_node.is_dyncall());
 
         let mem_addr = self.stack.get(0);
         // The callee hash is stored in memory, and the address is specified on the top of the
         // stack.
-        let callee_hash =
-            self.chiplets.memory.read_word(self.system.ctx(), mem_addr, self.system.clk())?;
+        let callee_hash = self
+            .chiplets
+            .memory
+            .read_word(self.system.ctx(), mem_addr, self.system.clk(), err_ctx)
+            .map_err(ExecutionError::MemoryError)?;
 
         let (addr, hashed_block) = self.chiplets.hasher.hash_control_block(
             EMPTY_WORD,
@@ -344,12 +347,12 @@ impl Process {
             dyn_node.digest(),
         );
 
-        debug_assert_eq!(dyn_node.digest(), hashed_block.into());
+        debug_assert_eq!(dyn_node.digest(), hashed_block);
 
         self.decoder.start_dyn(addr, callee_hash);
 
         // Pop the memory address off the stack.
-        self.execute_op(Operation::Drop, host)?;
+        self.execute_op(Operation::Drop, program, host)?;
 
         Ok(callee_hash)
     }
@@ -362,14 +365,18 @@ impl Process {
     pub(super) fn start_dyncall_node(
         &mut self,
         dyn_node: &DynNode,
+        err_ctx: &impl ErrorContext,
     ) -> Result<Word, ExecutionError> {
         debug_assert!(dyn_node.is_dyncall());
 
         let mem_addr = self.stack.get(0);
         // The callee hash is stored in memory, and the address is specified on the top of the
         // stack.
-        let callee_hash =
-            self.chiplets.memory.read_word(self.system.ctx(), mem_addr, self.system.clk())?;
+        let callee_hash = self
+            .chiplets
+            .memory
+            .read_word(self.system.ctx(), mem_addr, self.system.clk(), err_ctx)
+            .map_err(ExecutionError::MemoryError)?;
 
         // Note: other functions end in "executing a Noop", which
         // 1. ensures trace capacity,
@@ -388,7 +395,7 @@ impl Process {
             dyn_node.digest(),
         );
 
-        debug_assert_eq!(dyn_node.digest(), hashed_block.into());
+        debug_assert_eq!(dyn_node.digest(), hashed_block);
 
         let (stack_depth, next_overflow_addr) = self.stack.shift_left_and_start_context();
         debug_assert!(stack_depth <= u32::MAX as usize, "stack depth too big");
@@ -410,36 +417,37 @@ impl Process {
     }
 
     /// Ends decoding of a DYN node.
-    pub(super) fn end_dyn_node<H: Host>(
+    pub(super) fn end_dyn_node<H: SyncHost>(
         &mut self,
         dyn_node: &DynNode,
+        program: &MastForest,
         host: &mut H,
     ) -> Result<(), ExecutionError> {
         // this appends a row with END operation to the decoder trace. when the END operation is
         // executed the rest of the VM state does not change
-        self.decoder.end_control_block(dyn_node.digest().into());
+        self.decoder.end_control_block(dyn_node.digest());
 
-        self.execute_op(Operation::Noop, host)
+        self.execute_op(Operation::Noop, program, host)
     }
 
     /// Ends decoding of a DYNCALL node.
-    pub(super) fn end_dyncall_node<H: Host>(
+    pub(super) fn end_dyncall_node<H: SyncHost>(
         &mut self,
         dyn_node: &DynNode,
+        program: &MastForest,
         host: &mut H,
+        err_ctx: &impl ErrorContext,
     ) -> Result<(), ExecutionError> {
         // when a DYNCALL block ends, stack depth must be exactly 16
         let stack_depth = self.stack.depth();
         if stack_depth > MIN_STACK_DEPTH {
-            return Err(ExecutionError::InvalidStackDepthOnReturn(stack_depth));
+            return Err(ExecutionError::invalid_stack_depth_on_return(stack_depth, err_ctx));
         }
 
         // this appends a row with END operation to the decoder trace. when the END operation is
         // executed the rest of the VM state does not change
-        let ctx_info = self
-            .decoder
-            .end_control_block(dyn_node.digest().into())
-            .expect("no execution context");
+        let ctx_info =
+            self.decoder.end_control_block(dyn_node.digest()).expect("no execution context");
 
         // when returning from a function call, restore the context of the system
         // registers and the operand stack to what it was prior to the call.
@@ -448,56 +456,56 @@ impl Process {
             ctx_info.parent_fmp,
             ctx_info.parent_fn_hash,
         );
-        self.stack.restore_context(
-            ctx_info.parent_stack_depth as usize,
-            ctx_info.parent_next_overflow_addr,
-        );
+        self.stack.restore_context(ctx_info.parent_stack_depth as usize);
 
-        self.execute_op(Operation::Noop, host)
+        self.execute_op(Operation::Noop, program, host)
     }
 
     // BASIC BLOCK NODE
     // --------------------------------------------------------------------------------------------
 
     /// Starts decoding a BASIC BLOCK node.
-    pub(super) fn start_basic_block_node<H: Host>(
+    pub(super) fn start_basic_block_node<H: SyncHost>(
         &mut self,
         basic_block: &BasicBlockNode,
+        program: &MastForest,
         host: &mut H,
     ) -> Result<(), ExecutionError> {
-        // use the hasher to compute the hash of the SPAN block; the row address returned by the
-        // hasher is used as the ID of the block; hash of a SPAN block is computed by sequentially
+        // use the hasher to compute the hash of the BASIC BLOCK; the row address returned by the
+        // hasher is used as the ID of the block; hash of a BASIC BLOCK is computed by sequentially
         // hashing operation batches. Thus, the result of the hash is expected to be in row
         // addr + (num_batches * 8) - 1.
         let op_batches = basic_block.op_batches();
         let (addr, hashed_block) =
             self.chiplets.hasher.hash_basic_block(op_batches, basic_block.digest());
 
-        debug_assert_eq!(basic_block.digest(), hashed_block.into());
+        debug_assert_eq!(basic_block.digest(), hashed_block);
 
-        // start decoding the first operation batch; this also appends a row with SPAN operation
-        // to the decoder trace. we also need the total number of operation groups so that we can
-        // set the value of the group_count register at the beginning of the SPAN.
+        // start decoding the first operation batch; this also appends a row with BASIC BLOCK
+        // operation to the decoder trace. we also need the total number of operation groups
+        // so that we can set the value of the group_count register at the beginning of the
+        // BASIC BLOCK.
         let num_op_groups = basic_block.num_op_groups();
         self.decoder
-            .start_basic_block(&op_batches[0], Felt::from_u64(num_op_groups as u64), addr);
-        self.execute_op(Operation::Noop, host)
+            .start_basic_block(&op_batches[0], Felt::new(num_op_groups as u64), addr);
+        self.execute_op(Operation::Noop, program, host)
     }
 
     /// Ends decoding a BASIC BLOCK node.
-    pub(super) fn end_basic_block_node<H: Host>(
+    pub(super) fn end_basic_block_node<H: SyncHost>(
         &mut self,
         block: &BasicBlockNode,
+        program: &MastForest,
         host: &mut H,
     ) -> Result<(), ExecutionError> {
         // this appends a row with END operation to the decoder trace. when END operation is
         // executed the rest of the VM state does not change
-        self.decoder.end_basic_block(block.digest().into());
+        self.decoder.end_basic_block(block.digest());
 
-        self.execute_op(Operation::Noop, host)
+        self.execute_op(Operation::Noop, program, host)
     }
 
-    /// Continues decoding a SPAN block by absorbing the next batch of operations.
+    /// Continues decoding a BASIC BLOCK by absorbing the next batch of operations.
     pub(super) fn respan(&mut self, op_batch: &OpBatch) {
         self.decoder.respan(op_batch);
     }
@@ -553,7 +561,7 @@ impl Process {
 ///   only when both the processor and assembler are in debug mode.
 pub struct Decoder {
     block_stack: BlockStack,
-    span_context: Option<SpanContext>,
+    basic_block_context: Option<BasicBlockContext>,
     trace: DecoderTrace,
     debug_info: DebugInfo,
 }
@@ -565,7 +573,7 @@ impl Decoder {
     pub fn new(in_debug_mode: bool) -> Self {
         Self {
             block_stack: BlockStack::default(),
-            span_context: None,
+            basic_block_context: None,
             trace: DecoderTrace::new(),
             debug_info: DebugInfo::new(in_debug_mode),
         }
@@ -683,7 +691,7 @@ impl Decoder {
     /// Note that even though the hasher decoder columns are populated, the issued hash request is
     /// still for [ZERO; 8 | domain=DYN]. This is because a `DYN` node takes its child on the stack,
     /// and therefore the child hash cannot be included in the `DYN` node hash computation (see
-    /// [`vm_core::mast::DynNode`]). The decoder hasher columns are then not needed for the `DYN`
+    /// [`miden_core::mast::DynNode`]). The decoder hasher columns are then not needed for the `DYN`
     /// node hash computation, and so were used to store the result of the memory read operation for
     /// the child hash.
     ///
@@ -693,7 +701,7 @@ impl Decoder {
         // push DYN block info onto the block stack and append a DYN row to the execution trace
         let parent_addr = self.block_stack.push(addr, BlockType::Dyn, None);
         self.trace
-            .append_block_start(parent_addr, Operation::Dyn, callee_hash, [ZERO; 4]);
+            .append_block_start(parent_addr, Operation::Dyn, callee_hash, [ZERO; 4].into());
 
         self.debug_info.append_operation(Operation::Dyn);
     }
@@ -718,13 +726,13 @@ impl Decoder {
             parent_addr,
             Operation::Dyncall,
             callee_hash,
-            [parent_stack_depth, parent_next_overflow_addr, ZERO, ZERO],
+            [parent_stack_depth, parent_next_overflow_addr, ZERO, ZERO].into(),
         );
 
         self.debug_info.append_operation(Operation::Dyncall);
     }
 
-    /// Ends decoding of a control block (i.e., a non-SPAN block).
+    /// Ends decoding of a control block (i.e., a non-BASIC BLOCK).
     ///
     /// This appends an execution of an END operation to the trace. The top block on the block
     /// stack is also popped.
@@ -749,21 +757,21 @@ impl Decoder {
         block_info.ctx_info
     }
 
-    // SPAN BLOCK
+    // BASIC BLOCK
     // --------------------------------------------------------------------------------------------
 
-    /// Starts decoding of a SPAN block defined by the specified operation batches.
+    /// Starts decoding of a BASIC BLOCK defined by the specified operation batches.
     pub fn start_basic_block(&mut self, first_op_batch: &OpBatch, num_op_groups: Felt, addr: Felt) {
-        debug_assert!(self.span_context.is_none(), "already in span");
-        let parent_addr = self.block_stack.push(addr, BlockType::Span, None);
+        debug_assert!(self.basic_block_context.is_none(), "already in basic block");
+        let parent_addr = self.block_stack.push(addr, BlockType::BasicBlock, None);
 
-        // add a SPAN row to the trace
+        // add a BASIC BLOCK row to the trace
         self.trace
             .append_span_start(parent_addr, first_op_batch.groups(), num_op_groups);
 
-        // after SPAN operation is executed, we decrement the number of remaining groups by ONE
-        // because executing SPAN consumes the first group of the batch.
-        self.span_context = Some(SpanContext {
+        // after BASIC BLOCK operation is executed, we decrement the number of remaining groups by
+        // ONE because executing BASIC BLOCK consumes the first group of the batch.
+        self.basic_block_context = Some(BasicBlockContext {
             num_groups_left: num_op_groups - ONE,
             group_ops_left: first_op_batch.groups()[0],
         });
@@ -771,7 +779,7 @@ impl Decoder {
         self.debug_info.append_operation(Operation::Span);
     }
 
-    /// Starts decoding of the next operation batch in the current SPAN.
+    /// Starts decoding of the next operation batch in the current BASIC BLOCK.
     pub fn respan(&mut self, op_batch: &OpBatch) {
         // get the current clock cycle here (before the trace table is updated)
         // add RESPAN row to the trace
@@ -782,7 +790,7 @@ impl Decoder {
         let block_info = self.block_stack.peek_mut();
         block_info.addr += *HASH_CYCLE_LEN;
 
-        let ctx = self.span_context.as_mut().expect("not in span");
+        let ctx = self.basic_block_context.as_mut().expect("not in basic block");
 
         // after RESPAN operation is executed, we decrement the number of remaining groups by ONE
         // because executing RESPAN consumes the first group of the batch
@@ -794,7 +802,7 @@ impl Decoder {
 
     /// Starts decoding a new operation group.
     pub fn start_op_group(&mut self, op_group: Felt) {
-        let ctx = self.span_context.as_mut().expect("not in span");
+        let ctx = self.basic_block_context.as_mut().expect("not in basic block");
 
         // reset the current group value and decrement the number of left groups by ONE
         debug_assert_eq!(ZERO, ctx.group_ops_left, "not all ops executed in current group");
@@ -805,7 +813,7 @@ impl Decoder {
     /// Decodes a user operation (i.e., not a control flow operation).
     pub fn execute_user_op(&mut self, op: Operation, op_idx: usize) {
         let block = self.block_stack.peek();
-        let ctx = self.span_context.as_mut().expect("not in span");
+        let ctx = self.basic_block_context.as_mut().expect("not in basic block");
 
         // update operations left to be executed in the group
         ctx.group_ops_left = remove_opcode_from_group(ctx.group_ops_left, op);
@@ -844,13 +852,13 @@ impl Decoder {
         self.trace.set_user_op_helpers(values);
     }
 
-    /// Ends decoding of a SPAN block.
+    /// Ends decoding of a BASIC BLOCK.
     pub fn end_basic_block(&mut self, block_hash: Word) {
         // remove the block from the stack of executing blocks and add an END row to the
         // execution trace
         let block_info = self.block_stack.pop();
         self.trace.append_span_end(block_hash, block_info.is_loop_body());
-        self.span_context = None;
+        self.basic_block_context = None;
 
         self.debug_info.append_operation(Operation::End);
     }
@@ -902,18 +910,18 @@ impl Default for Decoder {
     }
 }
 
-// SPAN CONTEXT
+// BASIC BLOCK CONTEXT
 // ================================================================================================
 
-/// Keeps track of the info needed to decode a currently executing SPAN block. The info includes:
+/// Keeps track of the info needed to decode a currently executing BASIC BLOCK. The info includes:
 /// - Operations which still need to be executed in the current group. The operations are encoded as
 ///   opcodes (7 bits) appended one after another into a single field element, with the next
 ///   operation to be executed located at the least significant position.
-/// - Number of operation groups left to be executed in the entire SPAN block.
+/// - Number of operation groups left to be executed in the entire BASIC BLOCK.
 #[derive(Default)]
-struct SpanContext {
-    group_ops_left: Felt,
-    num_groups_left: Felt,
+pub(crate) struct BasicBlockContext {
+    pub group_ops_left: Felt,
+    pub num_groups_left: Felt,
 }
 
 // HELPER FUNCTIONS
@@ -949,8 +957,8 @@ pub fn build_op_group(ops: &[Operation]) -> Felt {
         group |= (op.op_code() as u64) << (Operation::OP_BITS * i);
         i += 1;
     }
-    assert!(i <= super::OP_GROUP_SIZE, "too many ops");
-    Felt::from_u64(group)
+    assert!(i <= OP_GROUP_SIZE, "too many ops");
+    Felt::new(group)
 }
 
 // DEBUG INFO

@@ -2,10 +2,7 @@ use miden_air::{
     RowIndex,
     trace::decoder::{OP_BATCH_2_GROUPS, OP_BATCH_4_GROUPS, OP_BATCH_8_GROUPS},
 };
-use vm_core::{
-    ExtensionField, OPCODE_EMIT, OPCODE_PUSH, OPCODE_RESPAN, OPCODE_SPAN, PrimeCharacteristicRing,
-    PrimeField64,
-};
+use miden_core::{OPCODE_PUSH, OPCODE_RESPAN, OPCODE_SPAN};
 
 use super::{AuxColumnBuilder, Felt, MainTrace, ONE};
 use crate::debug::BusDebugger;
@@ -106,8 +103,6 @@ fn get_op_group_table_removal_multiplicand<E: ExtensionField<Felt>>(
 
         if op_code == Felt::from_u8(OPCODE_PUSH) {
             main_trace.stack_element(0, i + 1)
-        } else if op_code == Felt::from_u8(OPCODE_EMIT) {
-            main_trace.helper_register(0, i)
         } else {
             let h0 = main_trace.decoder_hasher_state_first_half(i + 1)[0];
 

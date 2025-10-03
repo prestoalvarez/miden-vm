@@ -1,8 +1,8 @@
-use vm_core::{ lazy_static, BasedVectorSpace, Field, PrimeCharacteristicRing, PrimeField64, ONE, ZERO};
+use miden_core::{ExtensionOf, FieldElement, ONE, QuadFelt, StarkField, ZERO};
 
-use super::{super::QuadFelt, ExecutionError, Felt, Operation, Process};
+use super::{ExecutionError, Felt, Operation, Process};
 
-lazy_static!{
+lazy_static! {
 
 // CONSTANTS
 // ================================================================================================
@@ -243,8 +243,8 @@ mod tests {
     /*
     use alloc::vec::Vec;
 
-    use test_utils::rand::{rand_array, rand_value, rand_vector};
-    use vm_core::{PrimeCharacteristicRing, StackInputs};
+    use miden_core::{StackInputs, mast::MastForest};
+    use miden_utils_testing::rand::{rand_array, rand_value, rand_vector};
     use winter_prover::math::{fft, get_power_series_with_offset};
     use winter_utils::transpose_slice;
 
@@ -331,8 +331,10 @@ mod tests {
             StackInputs::new(inputs[0..16].to_vec()).expect("inputs lenght too long");
         let mut process = Process::new_dummy_with_decoder_helpers(stack_inputs);
         let mut host = DefaultHost::default();
-        process.execute_op(Operation::Push(inputs[16]), &mut host).unwrap();
-        process.execute_op(Operation::FriE2F4, &mut host).unwrap();
+        let program = &MastForest::default();
+
+        process.execute_op(Operation::Push(inputs[16]), program, &mut host).unwrap();
+        process.execute_op(Operation::FriE2F4, program, &mut host).unwrap();
 
         // --- check the stack state-------------------------------------------
         let stack_state = process.stack.trace_state();

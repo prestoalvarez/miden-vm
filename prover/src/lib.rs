@@ -8,18 +8,28 @@ extern crate std;
 
 use core::marker::PhantomData;
 use std::println;
-use tracing::instrument;
-
-use air::{ProcessorAir, PublicInputs};
-#[cfg(all(feature = "metal", target_arch = "aarch64", target_os = "macos"))]
-use miden_gpu::HashFn;
-
-use p3_field::extension::BinomialExtensionField;
-use p3_uni_stark::StarkGenericConfig;
-use processor::{ExecutionTrace, Program, ZERO, math::Felt};
-
 #[cfg(feature = "std")]
 use std::time::Instant;
+
+use miden_air::{AuxRandElements, PartitionOptions, ProcessorAir, PublicInputs};
+#[cfg(all(feature = "metal", target_arch = "aarch64", target_os = "macos"))]
+use miden_gpu::HashFn;
+use miden_processor::{
+    ExecutionTrace, Program,
+    crypto::{
+        Blake3_192, Blake3_256, ElementHasher, Poseidon2, RandomCoin, Rpo256, RpoRandomCoin,
+        Rpx256, RpxRandomCoin, WinterRandomCoin,
+    },
+    math::{Felt, FieldElement},
+};
+use tracing::instrument;
+use winter_maybe_async::{maybe_async, maybe_await};
+use winter_prover::{
+    CompositionPoly, CompositionPolyTrace, ConstraintCompositionCoefficients,
+    DefaultConstraintCommitment, DefaultConstraintEvaluator, DefaultTraceLde,
+    ProofOptions as WinterProofOptions, Prover, StarkDomain, TraceInfo, TracePolyTable,
+    matrix::ColMatrix,
+};
 mod gpu;
 
 mod prove;
@@ -27,10 +37,12 @@ mod prove;
 // EXPORTS
 // ================================================================================================
 
-pub use air::{DeserializationError, ExecutionProof, FieldExtension, HashFunction, ProvingOptions};
-pub use processor::{
-    AdviceInputs, Digest, ExecutionError, Host, InputError, MemAdviceProvider, StackInputs,
-    StackOutputs, Word, crypto, math, utils,
+pub use miden_air::{
+    DeserializationError, ExecutionProof, FieldExtension, HashFunction, ProvingOptions,
+};
+pub use miden_processor::{
+    AdviceInputs, AsyncHost, BaseHost, ExecutionError, InputError, StackInputs, StackOutputs,
+    SyncHost, Word, crypto, math, utils,
 };
 
 // PROVER
@@ -89,7 +101,8 @@ where
 pub fn prove(
     program: &Program,
     stack_inputs: StackInputs,
-    host: &mut impl Host,
+    advice_inputs: AdviceInputs,
+    host: &mut impl SyncHost,
     options: ProvingOptions,
 ) -> Result<(StackOutputs, ExecutionProof), ExecutionError>
 where
@@ -97,8 +110,13 @@ where
     // execute the program to create an execution trace
     #[cfg(feature = "std")]
     let now = Instant::now();
-    let trace =
-        processor::execute(program, stack_inputs.clone(), host, *options.execution_options())?;
+    let trace = miden_processor::execute(
+        program,
+        stack_inputs.clone(),
+        advice_inputs,
+        host,
+        *options.execution_options(),
+    )?;
     #[cfg(feature = "std")]
     tracing::event!(
         tracing::Level::INFO,
@@ -140,7 +158,18 @@ where
         HashFunction::Rpx256 => {
             unimplemented!()
         },
-    };
+        HashFunction::Poseidon2 => {
+            let prover = ExecutionProver::<Poseidon2, WinterRandomCoin<_>>::new(
+                options,
+                stack_inputs,
+                stack_outputs.clone(),
+            );
+            maybe_await!(prover.prove(trace))
+        },
+    }
+    .map_err(ExecutionError::ProverError)?;
+    let proof = ExecutionProof::new(proof, hash_fn);
+
     Ok((stack_outputs, proof))
 }
 
@@ -149,6 +178,5 @@ where
 
 // HELPERS and TYPES are consolidated into prove/ submodules
 
-use crate::prove::{prove_blake, prove_keccak, prove_rpo};
-pub use crate::prove::types::{Proof, Commitments, OpenedValues};
-use crate::prove::utils::to_row_major;
+pub use crate::prove::types::{Commitments, OpenedValues, Proof};
+use crate::prove::{prove_blake, prove_keccak, prove_rpo, utils::to_row_major};

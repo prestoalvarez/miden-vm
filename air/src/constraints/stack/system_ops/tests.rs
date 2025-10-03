@@ -1,5 +1,5 @@
+use miden_core::{Felt, ONE, Operation, ZERO};
 use proptest::prelude::*;
-use vm_core::{Felt, ONE, Operation, ZERO};
 
 use super::{
     super::{CLK_COL_IDX, FMP_COL_IDX, STACK_TRACE_OFFSET},
@@ -102,7 +102,7 @@ pub fn get_fmpupdate_test_frame(a: u64) -> EvaluationFrame<Felt> {
 /// returns an EvaluationFrame for testing.
 pub fn get_assert_test_frame() -> EvaluationFrame<Felt> {
     // frame initialized with a fmpupdate operation using it's unique opcode.
-    let mut frame = generate_evaluation_frame(Operation::Assert(0).op_code() as usize);
+    let mut frame = generate_evaluation_frame(Operation::Assert(ZERO).op_code() as usize);
 
     // Set the output. The top element in the current frame of the stack should be ONE.
     frame.current_mut()[STACK_TRACE_OFFSET] = ONE;

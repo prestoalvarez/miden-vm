@@ -7,7 +7,7 @@ use miden_air::{
         range::{M_COL_IDX, V_COL_IDX},
     },
 };
-use vm_core::{ExtensionField, PrimeField64};
+use miden_core::ZERO;
 
 use super::{Felt, NUM_RAND_ROWS, uninit_vector};
 
@@ -16,6 +16,7 @@ use super::{Felt, NUM_RAND_ROWS, uninit_vector};
 
 /// Describes how to construct the execution trace of columns related to the range checker in the
 /// auxiliary segment of the trace. These are used in multiset checks.
+#[derive(Debug)]
 pub struct AuxTraceBuilder {
     /// A list of the unique values for which range checks are performed.
     lookup_values: Vec<u16>,
@@ -68,9 +69,9 @@ impl AuxTraceBuilder {
         // run batch inversion on the lookup values
         let divisors = get_divisors(&self.lookup_values, rand_elements[0]);
 
-        // allocate memory for the running sum column and set the initial value to ONE
+        // allocate memory for the running sum column and set the initial value to ZERO
         let mut b_range = unsafe { uninit_vector(main_trace.num_rows()) };
-        b_range[0] = E::ONE;
+        b_range[0] = E::ZERO;
 
         // keep track of the last updated row in the `b_range` running sum column. `b_range` is
         // filled with result values that are added to the next row after the operation's execution.
@@ -95,7 +96,7 @@ impl AuxTraceBuilder {
             b_range[b_range_idx] = b_range[clk];
             // include the operation lookups
             for lookup in range_checks.iter() {
-                let value = divisors.get(lookup).expect("invalid lookup value {}");
+                let value = divisors.get(lookup).expect("invalid lookup value");
                 b_range[b_range_idx] -= *value;
             }
         }
@@ -120,12 +121,10 @@ impl AuxTraceBuilder {
         {
             b_range_idx = row_idx + 1;
 
-            if multiplicity.as_canonical_u64() != 0 {
-                // add the value in the range checker: multiplicity / (alpha - lookup)
-                let value = divisors
-                    .get(&(lookup.as_canonical_u64() as u16))
-                    .expect("invalid lookup value");
-                b_range[b_range_idx] = b_range[row_idx] + *value * *multiplicity;
+            if *multiplicity != ZERO {
+                // add the value in the range checker: multiplicity / (alpha + lookup)
+                let value = divisors.get(&(lookup.as_int() as u16)).expect("invalid lookup value");
+                b_range[b_range_idx] = b_range[row_idx] + value.mul_base(*multiplicity);
             } else {
                 b_range[b_range_idx] = b_range[row_idx];
             }
@@ -140,11 +139,11 @@ impl AuxTraceBuilder {
         }
 
         // at this point, all range checks from user operations and the range checker should be
-        // matched - so, the last value must be ONE;
-        assert_eq!(b_range[b_range_idx], E::ONE);
+        // matched - so, the last value must be ZERO;
+        assert_eq!(b_range[b_range_idx], E::ZERO);
 
         if b_range_idx < b_range.len() - 1 {
-            b_range[(b_range_idx + 1)..].fill(E::ONE);
+            b_range[(b_range_idx + 1)..].fill(E::ZERO);
         }
 
         b_range
@@ -153,8 +152,11 @@ impl AuxTraceBuilder {
 
 /// Runs batch inversion on all range check lookup values and returns a map which maps each value
 /// to the divisor used for including it in the LogUp lookup. In other words, the map contains
-/// mappings of x to 1/(alpha - x).
-fn get_divisors<E: ExtensionField<Felt>>(lookup_values: &[u16], alpha: E) -> BTreeMap<u16, E> {
+/// mappings of x to 1/(alpha + x).
+fn get_divisors<E: FieldElement<BaseField = Felt>>(
+    lookup_values: &[u16],
+    alpha: E,
+) -> BTreeMap<u16, E> {
     // run batch inversion on the lookup values
     let mut values = unsafe { uninit_vector(lookup_values.len()) };
     let mut inv_values = unsafe { uninit_vector(lookup_values.len()) };
@@ -163,7 +165,7 @@ fn get_divisors<E: ExtensionField<Felt>>(lookup_values: &[u16], alpha: E) -> BTr
     let mut acc = E::ONE;
     for (i, (value, inv_value)) in values.iter_mut().zip(inv_values.iter_mut()).enumerate() {
         *inv_value = acc;
-        *value = alpha - E::from_u16(lookup_values[i]);
+        *value = alpha + E::from(lookup_values[i]);
         acc *= *value;
     }
 

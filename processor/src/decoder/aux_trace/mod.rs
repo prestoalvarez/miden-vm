@@ -1,9 +1,11 @@
 use alloc::vec::Vec;
 
+use miden_air::trace::main_trace::MainTrace;
+use miden_core::FieldElement;
+use vm_core::ExtensionField;
+
 use super::{Felt, ONE, ZERO};
 use crate::trace::AuxColumnBuilder;
-use miden_air::trace::main_trace::MainTrace;
-use vm_core::ExtensionField;
 
 mod block_hash_table;
 use block_hash_table::BlockHashTableColumnBuilder;
@@ -21,7 +23,7 @@ use op_group_table::OpGroupTableColumnBuilder;
 
 /// Constructs the execution traces of stack-related auxiliary trace segment columns
 /// (used in multiset checks).
-#[derive(Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct AuxTraceBuilder {}
 
 impl AuxTraceBuilder {

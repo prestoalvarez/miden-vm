@@ -2,7 +2,7 @@
 use alloc::vec::Vec;
 use core::ops::{Deref, Range};
 
-use vm_core::{Felt, ONE, PrimeCharacteristicRing, Word, ZERO, utils::range};
+use miden_core::{Felt, ONE, Word, ZERO, utils::range};
 
 use super::{
     CHIPLETS_OFFSET, CLK_COL_IDX, CTX_COL_IDX, DECODER_TRACE_OFFSET, FMP_COL_IDX, FN_HASH_OFFSET,
@@ -10,7 +10,12 @@ use super::{
     chiplets::{
         BITWISE_A_COL_IDX, BITWISE_B_COL_IDX, BITWISE_OUTPUT_COL_IDX, HASHER_NODE_INDEX_COL_IDX,
         HASHER_STATE_COL_RANGE, MEMORY_CLK_COL_IDX, MEMORY_CTX_COL_IDX, MEMORY_IDX0_COL_IDX,
-        MEMORY_IDX1_COL_IDX, MEMORY_V_COL_RANGE, MEMORY_WORD_COL_IDX,
+        MEMORY_IDX1_COL_IDX, MEMORY_V_COL_RANGE, MEMORY_WORD_COL_IDX, NUM_ACE_SELECTORS,
+        ace::{
+            CLK_IDX, CTX_IDX, EVAL_OP_IDX, ID_0_IDX, ID_1_IDX, ID_2_IDX, M_0_IDX, M_1_IDX, PTR_IDX,
+            READ_NUM_EVAL_IDX, SELECTOR_BLOCK_IDX, SELECTOR_START_IDX, V_0_0_IDX, V_0_1_IDX,
+            V_1_0_IDX, V_1_1_IDX, V_2_0_IDX, V_2_1_IDX,
+        },
         hasher::{DIGEST_LEN, HASH_CYCLE_LEN, STATE_WIDTH},
     },
     decoder::{
@@ -32,103 +37,7 @@ const DECODER_HASHER_RANGE: Range<usize> =
 // HELPER STRUCT AND METHODS
 // ================================================================================================
 
-pub struct ColMatrix<E> {
-    columns: Vec<Vec<E>>,
-}
-
-impl<E: Clone + Copy> ColMatrix<E> {
-    // CONSTRUCTOR
-    // --------------------------------------------------------------------------------------------
-    /// Returns a new [Matrix] instantiated with the data from the specified columns.
-    ///
-    /// # Panics
-    /// Panics if:
-    /// * The provided vector of columns is empty.
-    /// * Not all of the columns have the same number of elements.
-    /// * Number of rows is smaller than or equal to 1.
-    /// * Number of rows is not a power of two.
-    pub fn new(columns: Vec<Vec<E>>) -> Self {
-        assert!(!columns.is_empty(), "a matrix must contain at least one column");
-        let num_rows = columns[0].len();
-        assert!(num_rows > 1, "number of rows in a matrix must be greater than one");
-        assert!(num_rows.is_power_of_two(), "number of rows in a matrix must be a power of 2");
-        for column in columns.iter().skip(1) {
-            assert_eq!(column.len(), num_rows, "all matrix columns must have the same length");
-        }
-
-        Self { columns }
-    }
-    // PUBLIC ACCESSORS
-    // --------------------------------------------------------------------------------------------
-
-    /// Returns the number of columns in this matrix.
-    pub fn num_cols(&self) -> usize {
-        self.columns.len()
-    }
-
-    /// Returns the number of rows in this matrix.
-    pub fn num_rows(&self) -> usize {
-        self.columns[0].len()
-    }
-
-    /// Returns the element located at the specified column and row indexes in this matrix.
-    ///
-    /// # Panics
-    /// Panics if either `col_idx` or `row_idx` are out of bounds for this matrix.
-    pub fn get(&self, col_idx: usize, row_idx: usize) -> E {
-        self.columns[col_idx][row_idx].clone()
-    }
-
-    /// Returns a reference to the column at the specified index.
-    pub fn get_column(&self, col_idx: usize) -> &[E] {
-        &self.columns[col_idx]
-    }
-
-    /// Returns a reference to the column at the specified index.
-    pub fn get_column_mut(&mut self, col_idx: usize) -> &mut [E] {
-        &mut self.columns[col_idx]
-    }
-
-    /// Copies values of all columns at the specified row into the specified row slice.
-    ///
-    /// # Panics
-    /// Panics if `row_idx` is out of bounds for this matrix.
-    pub fn read_row_into(&self, row_idx: usize, row: &mut [E]) {
-        for (column, value) in self.columns.iter().zip(row.iter_mut()) {
-            *value = column[row_idx];
-        }
-    }
-
-    /// Updates a row in this matrix at the specified index to the provided data.
-    ///
-    /// # Panics
-    /// Panics if `row_idx` is out of bounds for this matrix.
-    pub fn update_row(&mut self, row_idx: usize, row: &[E]) {
-        for (column, &value) in self.columns.iter_mut().zip(row) {
-            column[row_idx] = value;
-        }
-    }
-
-    /// Merges a column to the end of the matrix provided its length matches the matrix.
-    ///
-    /// # Panics
-    /// Panics if the column has a different length to other columns in the matrix.
-    pub fn merge_column(&mut self, column: Vec<E>) {
-        if let Some(first_column) = self.columns.first() {
-            assert_eq!(first_column.len(), column.len());
-        }
-        self.columns.push(column);
-    }
-
-    /// Removes a column of the matrix given its index.
-    ///
-    /// # Panics
-    /// Panics if the column index is out of range.
-    pub fn remove_column(&mut self, index: usize) -> Vec<E> {
-        assert!(index < self.num_cols(), "column index out of range");
-        self.columns.remove(index)
-    }
-}
+#[derive(Debug)]
 pub struct MainTrace {
     columns: ColMatrix<Felt>,
     last_program_row: RowIndex,
@@ -215,7 +124,7 @@ impl MainTrace {
         for (col, s) in state.iter_mut().enumerate() {
             *s = self.columns.get_column(DECODER_TRACE_OFFSET + HASHER_STATE_OFFSET + col)[i];
         }
-        state
+        state.into()
     }
 
     /// Returns the second half of the hasher state at row i.
@@ -228,7 +137,7 @@ impl MainTrace {
                 .get_column(DECODER_TRACE_OFFSET + HASHER_STATE_OFFSET + SECOND_WORD_OFFSET + col)
                 [i];
         }
-        state
+        state.into()
     }
 
     /// Returns a specific element from the hasher state at row i.
@@ -414,6 +323,11 @@ impl MainTrace {
         self.columns.get_column(CHIPLETS_OFFSET + 4)[i]
     }
 
+    /// Returns chiplet column number 5 at row i.
+    pub fn chiplet_selector_5(&self, i: RowIndex) -> Felt {
+        self.columns.get_column(CHIPLETS_OFFSET + 5)[i]
+    }
+
     /// Returns `true` if a row is part of the hash chiplet.
     pub fn is_hash_row(&self, i: RowIndex) -> bool {
         self.chiplet_selector_0(i) == ZERO
@@ -506,17 +420,133 @@ impl MainTrace {
         self.columns.get_column(MEMORY_V_COL_RANGE.start + 3)[i]
     }
 
-    /// Returns `true` if a row is part of the kernel chiplet.
-    pub fn is_kernel_row(&self, i: RowIndex) -> bool {
+    /// Returns `true` if a row is part of the ACE chiplet.
+    pub fn is_ace_row(&self, i: RowIndex) -> bool {
         self.chiplet_selector_0(i) == ONE
             && self.chiplet_selector_1(i) == ONE
             && self.chiplet_selector_2(i) == ONE
             && self.chiplet_selector_3(i) == ZERO
     }
 
-    /// Returns the i-th row of the kernel chiplet `addr` column.
-    pub fn chiplet_kernel_idx(&self, i: RowIndex) -> Felt {
-        self.columns.get_column(CHIPLETS_OFFSET + 5)[i]
+    pub fn chiplet_ace_start_selector(&self, i: RowIndex) -> Felt {
+        self.columns
+            .get_column(CHIPLETS_OFFSET + NUM_ACE_SELECTORS + SELECTOR_START_IDX)[i]
+    }
+
+    pub fn chiplet_ace_block_selector(&self, i: RowIndex) -> Felt {
+        self.columns
+            .get_column(CHIPLETS_OFFSET + NUM_ACE_SELECTORS + SELECTOR_BLOCK_IDX)[i]
+    }
+
+    pub fn chiplet_ace_ctx(&self, i: RowIndex) -> Felt {
+        self.columns.get_column(CHIPLETS_OFFSET + NUM_ACE_SELECTORS + CTX_IDX)[i]
+    }
+
+    pub fn chiplet_ace_ptr(&self, i: RowIndex) -> Felt {
+        self.columns.get_column(CHIPLETS_OFFSET + NUM_ACE_SELECTORS + PTR_IDX)[i]
+    }
+
+    pub fn chiplet_ace_clk(&self, i: RowIndex) -> Felt {
+        self.columns.get_column(CHIPLETS_OFFSET + NUM_ACE_SELECTORS + CLK_IDX)[i]
+    }
+
+    pub fn chiplet_ace_eval_op(&self, i: RowIndex) -> Felt {
+        self.columns.get_column(CHIPLETS_OFFSET + NUM_ACE_SELECTORS + EVAL_OP_IDX)[i]
+    }
+
+    pub fn chiplet_ace_num_eval_rows(&self, i: RowIndex) -> Felt {
+        self.columns.get_column(CHIPLETS_OFFSET + NUM_ACE_SELECTORS + READ_NUM_EVAL_IDX)[i]
+    }
+
+    pub fn chiplet_ace_id_0(&self, i: RowIndex) -> Felt {
+        self.columns.get_column(CHIPLETS_OFFSET + NUM_ACE_SELECTORS + ID_0_IDX)[i]
+    }
+
+    pub fn chiplet_ace_v_0_0(&self, i: RowIndex) -> Felt {
+        self.columns.get_column(CHIPLETS_OFFSET + NUM_ACE_SELECTORS + V_0_0_IDX)[i]
+    }
+
+    pub fn chiplet_ace_v_0_1(&self, i: RowIndex) -> Felt {
+        self.columns.get_column(CHIPLETS_OFFSET + NUM_ACE_SELECTORS + V_0_1_IDX)[i]
+    }
+
+    pub fn chiplet_ace_wire_0(&self, i: RowIndex) -> [Felt; 3] {
+        let id_0 = self.chiplet_ace_id_0(i);
+        let v_0_0 = self.chiplet_ace_v_0_0(i);
+        let v_0_1 = self.chiplet_ace_v_0_1(i);
+
+        [id_0, v_0_0, v_0_1]
+    }
+
+    pub fn chiplet_ace_id_1(&self, i: RowIndex) -> Felt {
+        self.columns.get_column(CHIPLETS_OFFSET + NUM_ACE_SELECTORS + ID_1_IDX)[i]
+    }
+
+    pub fn chiplet_ace_v_1_0(&self, i: RowIndex) -> Felt {
+        self.columns.get_column(CHIPLETS_OFFSET + NUM_ACE_SELECTORS + V_1_0_IDX)[i]
+    }
+
+    pub fn chiplet_ace_v_1_1(&self, i: RowIndex) -> Felt {
+        self.columns.get_column(CHIPLETS_OFFSET + NUM_ACE_SELECTORS + V_1_1_IDX)[i]
+    }
+
+    pub fn chiplet_ace_wire_1(&self, i: RowIndex) -> [Felt; 3] {
+        let id_1 = self.chiplet_ace_id_1(i);
+        let v_1_0 = self.chiplet_ace_v_1_0(i);
+        let v_1_1 = self.chiplet_ace_v_1_1(i);
+
+        [id_1, v_1_0, v_1_1]
+    }
+
+    pub fn chiplet_ace_id_2(&self, i: RowIndex) -> Felt {
+        self.columns.get_column(CHIPLETS_OFFSET + NUM_ACE_SELECTORS + ID_2_IDX)[i]
+    }
+
+    pub fn chiplet_ace_v_2_0(&self, i: RowIndex) -> Felt {
+        self.columns.get_column(CHIPLETS_OFFSET + NUM_ACE_SELECTORS + V_2_0_IDX)[i]
+    }
+
+    pub fn chiplet_ace_v_2_1(&self, i: RowIndex) -> Felt {
+        self.columns.get_column(CHIPLETS_OFFSET + NUM_ACE_SELECTORS + V_2_1_IDX)[i]
+    }
+
+    pub fn chiplet_ace_wire_2(&self, i: RowIndex) -> [Felt; 3] {
+        let id_2 = self.chiplet_ace_id_2(i);
+        let v_2_0 = self.chiplet_ace_v_2_0(i);
+        let v_2_1 = self.chiplet_ace_v_2_1(i);
+
+        [id_2, v_2_0, v_2_1]
+    }
+
+    pub fn chiplet_ace_m_1(&self, i: RowIndex) -> Felt {
+        self.columns.get_column(CHIPLETS_OFFSET + NUM_ACE_SELECTORS + M_1_IDX)[i]
+    }
+
+    pub fn chiplet_ace_m_0(&self, i: RowIndex) -> Felt {
+        self.columns.get_column(CHIPLETS_OFFSET + NUM_ACE_SELECTORS + M_0_IDX)[i]
+    }
+
+    pub fn chiplet_ace_is_read_row(&self, i: RowIndex) -> bool {
+        self.is_ace_row(i) && self.chiplet_ace_block_selector(i) == ZERO
+    }
+
+    pub fn chiplet_ace_is_eval_row(&self, i: RowIndex) -> bool {
+        self.is_ace_row(i) && self.chiplet_ace_block_selector(i) == ONE
+    }
+
+    /// Returns `true` if a row is part of the kernel chiplet.
+    pub fn is_kernel_row(&self, i: RowIndex) -> bool {
+        self.chiplet_selector_0(i) == ONE
+            && self.chiplet_selector_1(i) == ONE
+            && self.chiplet_selector_2(i) == ONE
+            && self.chiplet_selector_3(i) == ONE
+            && self.chiplet_selector_4(i) == ZERO
+    }
+
+    /// Returns true when the i-th row of the `s_first` column in the kernel chiplet is one, i.e.,
+    /// when this is the first row in a range of rows containing the same kernel proc hash.
+    pub fn chiplet_kernel_is_first_hash_row(&self, i: RowIndex) -> bool {
+        self.columns.get_column(CHIPLETS_OFFSET + 5)[i] == ONE
     }
 
     /// Returns the i-th row of the chiplet column containing the zeroth element of the kernel
@@ -549,7 +579,7 @@ impl MainTrace {
     /// Returns `true` if the hasher chiplet flags indicate the initialization of verifying
     /// a Merkle path to an old node during Merkle root update procedure (MRUPDATE).
     pub fn f_mv(&self, i: RowIndex) -> bool {
-        (i.as_usize() % HASH_CYCLE_LEN == 0)
+        i.as_usize().is_multiple_of(HASH_CYCLE_LEN)
             && self.chiplet_selector_0(i) == ZERO
             && self.chiplet_selector_1(i) == ONE
             && self.chiplet_selector_2(i) == ONE
@@ -569,7 +599,7 @@ impl MainTrace {
     /// Returns `true` if the hasher chiplet flags indicate the initialization of verifying
     /// a Merkle path to a new node during Merkle root update procedure (MRUPDATE).
     pub fn f_mu(&self, i: RowIndex) -> bool {
-        (i.as_usize() % HASH_CYCLE_LEN == 0)
+        i.as_usize().is_multiple_of(HASH_CYCLE_LEN)
             && self.chiplet_selector_0(i) == ZERO
             && self.chiplet_selector_1(i) == ONE
             && self.chiplet_selector_2(i) == ONE

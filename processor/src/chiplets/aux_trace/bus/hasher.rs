@@ -13,13 +13,16 @@ use miden_air::{
         main_trace::MainTrace,
     },
 };
-use vm_core::{
-    ExtensionField, Felt, ONE, OPCODE_CALL, OPCODE_JOIN, OPCODE_LOOP, OPCODE_SPLIT,
-    PrimeCharacteristicRing, PrimeField64, ZERO, utils::range,
+use miden_core::{
+    Felt, FieldElement, ONE, OPCODE_CALL, OPCODE_JOIN, OPCODE_LOOP, OPCODE_SPLIT, ZERO,
+    utils::range,
 };
 
-use super::{build_value, get_op_label};
-use crate::debug::{BusDebugger, BusMessage};
+use super::get_op_label;
+use crate::{
+    chiplets::aux_trace::build_value,
+    debug::{BusDebugger, BusMessage},
+};
 // REQUESTS
 // ==============================================================================================
 
@@ -408,7 +411,7 @@ where
     let addr_next = Felt::from(row + 1);
 
     // f_bp, f_mp, f_mv or f_mu == 1
-    if row.as_usize() % HASH_CYCLE_LEN == 0 {
+    if row.as_usize().is_multiple_of(HASH_CYCLE_LEN) {
         let state = main_trace.chiplet_hasher_state(row);
         let node_index = main_trace.chiplet_node_index(row);
         let transition_label = op_label + Felt::from_u8(16_u8);

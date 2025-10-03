@@ -3,6 +3,9 @@
 
 name: changelog
 
+permissions:
+  contents: read
+
 on:
   pull_request:
     types: [opened, reopened, synchronize, labeled, unlabeled]
@@ -12,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@main
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - name: Check for changes in changelog

@@ -1,6 +1,7 @@
+use miden_core::mast::MastForest;
+
 use super::{ExecutionError, Operation, Process};
-use crate::{AdviceProvider, Host};
-use vm_core::PrimeField64;
+use crate::{ErrorContext, Felt};
 
 // CRYPTOGRAPHIC OPERATIONS
 // ================================================================================================
@@ -66,18 +67,24 @@ impl Process {
     /// Panics if the computed root does not match the root provided via the stack.
     pub(super) fn op_mpverify(
         &mut self,
-        err_code: u32,
-        host: &mut impl Host,
+        err_code: Felt,
+        program: &MastForest,
+        err_ctx: &impl ErrorContext,
     ) -> Result<(), ExecutionError> {
         // read node value, depth, index and root value from the stack
-        let node = [self.stack.get(3), self.stack.get(2), self.stack.get(1), self.stack.get(0)];
+        let node =
+            [self.stack.get(3), self.stack.get(2), self.stack.get(1), self.stack.get(0)].into();
         let depth = self.stack.get(4);
         let index = self.stack.get(5);
-        let root = [self.stack.get(9), self.stack.get(8), self.stack.get(7), self.stack.get(6)];
+        let root =
+            [self.stack.get(9), self.stack.get(8), self.stack.get(7), self.stack.get(6)].into();
 
         // get a Merkle path from the advice provider for the specified root and node index.
         // the path is expected to be of the specified depth.
-        let path = host.advice_provider_mut().get_merkle_path(root, &depth, &index)?;
+        let path = self
+            .advice
+            .get_merkle_path(root, &depth, &index)
+            .map_err(|err| ExecutionError::advice_error(err, self.system.clk(), err_ctx))?;
 
         // use hasher to compute the Merkle root of the path
         let (addr, computed_root) = self.chiplets.hasher.build_merkle_root(node, &path, index);
@@ -89,12 +96,10 @@ impl Process {
         if root != computed_root {
             // If the hasher chiplet doesn't compute the same root (using the same path),
             // then it means that `node` is not the value currently in the tree at `index`
-            return Err(ExecutionError::MerklePathVerificationFailed {
-                value: node,
-                index,
-                root: root.into(),
-                err_code,
-            });
+            let err_msg = program.resolve_error_message(err_code);
+            return Err(ExecutionError::merkle_path_verification_failed(
+                node, index, root, err_code, err_msg, err_ctx,
+            ));
         }
 
         // The same state is copied over to the next clock cycle with no changes.
@@ -135,22 +140,28 @@ impl Process {
     ///
     /// # Panics
     /// Panics if the computed old root does not match the input root provided via the stack.
-    pub(super) fn op_mrupdate(&mut self, host: &mut impl Host) -> Result<(), ExecutionError> {
+    pub(super) fn op_mrupdate(
+        &mut self,
+        err_ctx: &impl ErrorContext,
+    ) -> Result<(), ExecutionError> {
         // read old node value, depth, index, tree root and new node values from the stack
-        let old_node = [self.stack.get(3), self.stack.get(2), self.stack.get(1), self.stack.get(0)];
+        let old_node =
+            [self.stack.get(3), self.stack.get(2), self.stack.get(1), self.stack.get(0)].into();
         let depth = self.stack.get(4);
         let index = self.stack.get(5);
-        let old_root = [self.stack.get(9), self.stack.get(8), self.stack.get(7), self.stack.get(6)];
+        let old_root =
+            [self.stack.get(9), self.stack.get(8), self.stack.get(7), self.stack.get(6)].into();
         let new_node =
-            [self.stack.get(13), self.stack.get(12), self.stack.get(11), self.stack.get(10)];
+            [self.stack.get(13), self.stack.get(12), self.stack.get(11), self.stack.get(10)].into();
 
         // update the node at the specified index in the Merkle tree specified by the old root, and
         // get a Merkle path to it. the length of the returned path is expected to match the
         // specified depth. if the new node is the root of a tree, this instruction will append the
         // whole sub-tree to this node.
-        let (path, _) = host
-            .advice_provider_mut()
-            .update_merkle_node(old_root, &depth, &index, new_node)?;
+        let (path, _) = self
+            .advice
+            .update_merkle_node(old_root, &depth, &index, new_node)
+            .map_err(|err| ExecutionError::advice_error(err, self.system.clk(), err_ctx))?;
 
         assert_eq!(path.len(), depth.as_canonical_u64() as usize);
 
@@ -184,11 +195,12 @@ impl Process {
 mod tests {
     use alloc::vec::Vec;
 
-    use test_utils::rand::rand_vector;
-    use vm_core::{
-        chiplets::hasher::{apply_permutation, STATE_WIDTH},
-        crypto::merkle::{MerkleStore, MerkleTree, NodeIndex}, PrimeCharacteristicRing, PrimeField64
+    use miden_core::{
+        chiplets::hasher::{STATE_WIDTH, apply_permutation},
+        crypto::merkle::{MerkleStore, MerkleTree, NodeIndex},
+        mast::MastForest,
     };
+    use miden_utils_testing::rand::rand_vector;
 
     use super::{
         super::{Felt, Operation},
@@ -208,9 +220,10 @@ mod tests {
         let stack = StackInputs::try_from_ints(inputs).unwrap();
         let mut process = Process::new_dummy_with_decoder_helpers(stack);
         let mut host = DefaultHost::default();
+        let program = &MastForest::default();
 
         let expected: [Felt; STATE_WIDTH] = build_expected_perm(&inputs);
-        process.execute_op(Operation::HPerm, &mut host).unwrap();
+        process.execute_op(Operation::HPerm, program, &mut host).unwrap();
         assert_eq!(expected, &process.stack.trace_state()[0..12]);
 
         // --- test hashing 8 random values -------------------------------------------------------
@@ -222,7 +235,7 @@ mod tests {
 
         // add the capacity to prepare the input vector
         let expected: [Felt; STATE_WIDTH] = build_expected_perm(&inputs);
-        process.execute_op(Operation::HPerm, &mut host).unwrap();
+        process.execute_op(Operation::HPerm, program, &mut host).unwrap();
         assert_eq!(expected, &process.stack.trace_state()[0..12]);
 
         // --- test that the rest of the stack isn't affected -------------------------------------
@@ -233,7 +246,7 @@ mod tests {
 
         let stack = StackInputs::try_from_ints(inputs).unwrap();
         let mut process = Process::new_dummy_with_decoder_helpers(stack);
-        process.execute_op(Operation::HPerm, &mut host).unwrap();
+        process.execute_op(Operation::HPerm, program, &mut host).unwrap();
         assert_eq!(expected, &process.stack.trace_state()[12..16]);
     }
 
@@ -268,8 +281,9 @@ mod tests {
         let stack_inputs = StackInputs::try_from_ints(stack_inputs).unwrap();
         let (mut process, mut host) =
             Process::new_dummy_with_inputs_and_decoder_helpers(stack_inputs, advice_inputs);
+        let program = &MastForest::default();
 
-        process.execute_op(Operation::MpVerify(0), &mut host).unwrap();
+        process.execute_op(Operation::MpVerify(ZERO), program, &mut host).unwrap();
         let expected_stack = build_expected(&[
             node[3], node[2], node[1], node[0], depth, index, root[3], root[2], root[1], root[0],
         ]);
@@ -310,9 +324,10 @@ mod tests {
         let stack_inputs = StackInputs::try_from_ints(stack_inputs).unwrap();
         let (mut process, mut host) =
             Process::new_dummy_with_inputs_and_decoder_helpers(stack_inputs, advice_inputs);
+        let program = &MastForest::default();
 
         // update the Merkle tree but keep the old copy
-        process.execute_op(Operation::MrUpdate, &mut host).unwrap();
+        process.execute_op(Operation::MrUpdate, program, &mut host).unwrap();
         let expected_stack = build_expected(&[
             new_tree.root()[3],
             new_tree.root()[2],
@@ -332,8 +347,8 @@ mod tests {
         assert_eq!(expected_stack, process.stack.trace_state());
 
         // make sure both Merkle trees are still in the advice provider
-        assert!(host.advice_provider().has_merkle_root(tree.root()));
-        assert!(host.advice_provider().has_merkle_root(new_tree.root()));
+        assert!(process.advice.has_merkle_root(tree.root()));
+        assert!(process.advice.has_merkle_root(new_tree.root()));
     }
 
     #[test]
@@ -388,12 +403,13 @@ mod tests {
         let stack_inputs = StackInputs::try_from_ints(stack_inputs).unwrap();
         let (mut process, mut host) =
             Process::new_dummy_with_inputs_and_decoder_helpers(stack_inputs, advice_inputs);
+        let program = &MastForest::default();
 
         // assert the expected root doesn't exist before the merge operation
-        assert!(!host.advice_provider().has_merkle_root(expected_root));
+        assert!(!process.advice.has_merkle_root(expected_root));
 
         // update the previous root
-        process.execute_op(Operation::MrUpdate, &mut host).unwrap();
+        process.execute_op(Operation::MrUpdate, program, &mut host).unwrap();
         let expected_stack = build_expected(&[
             expected_root[3],
             expected_root[2],
@@ -413,7 +429,7 @@ mod tests {
         assert_eq!(expected_stack, process.stack.trace_state());
 
         // assert the expected root now exists in the advice provider
-        assert!(host.advice_provider().has_merkle_root(expected_root));
+        assert!(process.advice.has_merkle_root(expected_root));
     }
 
     // HELPER FUNCTIONS
@@ -423,7 +439,7 @@ mod tests {
     }
 
     fn init_node(value: u64) -> Word {
-        [Felt::from_u64(value), ZERO, ZERO, ZERO]
+        [Felt::new(value), ZERO, ZERO, ZERO].into()
     }
 
     fn build_expected(values: &[Felt]) -> [Felt; 16] {

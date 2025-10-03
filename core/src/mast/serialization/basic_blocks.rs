@@ -1,9 +1,11 @@
 use alloc::vec::Vec;
 
-use winter_utils::{ByteReader, DeserializationError, Serializable, SliceReader};
-
 use super::NodeDataOffset;
-use crate::{Operation, mast::BasicBlockNode};
+use crate::{
+    Operation,
+    mast::BasicBlockNode,
+    utils::{ByteReader, DeserializationError, Serializable, SliceReader},
+};
 
 // BASIC BLOCK DATA BUILDER
 // ================================================================================================
@@ -28,7 +30,7 @@ impl BasicBlockDataBuilder {
     pub fn encode_basic_block(&mut self, basic_block: &BasicBlockNode) -> NodeDataOffset {
         let ops_offset = self.node_data.len() as NodeDataOffset;
 
-        let operations: Vec<Operation> = basic_block.operations().copied().collect();
+        let operations: Vec<Operation> = basic_block.raw_operations().copied().collect();
         operations.write_into(&mut self.node_data);
 
         ops_offset

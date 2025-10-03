@@ -1,37 +1,51 @@
 use alloc::vec::Vec;
 
-//use miden_air::ProcessorAir;
-use processor::crypto::RpoRandomCoin;
-use test_utils::{
-    VerifierError,
-    crypto::{MerkleStore, RandomCoin, Rpo256, RpoDigest},
-    math::{FieldElement, ToElements},
+use miden_air::ProcessorAir;
+use miden_core::{Felt, FieldElement, QuadFelt, ToElements, WORD_SIZE, Word};
+use miden_processor::crypto::RpoRandomCoin;
+use miden_utils_testing::{
+    MIN_STACK_DEPTH, VerifierError,
+    crypto::{MerkleStore, RandomCoin, Rpo256},
 };
-use vm_core::{BinomialExtensionField, Felt};
-use winter_air::{Air, proof::Proof};
+use winter_air::{
+    Air,
+    proof::{Proof, merge_ood_evaluations},
+};
 use winter_fri::VerifierChannel as FriVerifierChannel;
 
 mod channel;
 use channel::VerifierChannel;
-
-pub type QuadExt = BinomialExtensionField<Felt, 2>;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct VerifierData {
     pub initial_stack: Vec<u64>,
     pub advice_stack: Vec<u64>,
     pub store: MerkleStore,
-    pub advice_map: Vec<(RpoDigest, Vec<Felt>)>,
+    pub advice_map: Vec<(Word, Vec<Felt>)>,
 }
 
 pub fn generate_advice_inputs(
     proof: Proof,
     pub_inputs: <ProcessorAir as Air>::PublicInputs,
 ) -> Result<VerifierData, VerifierError> {
+    // we compute the number of procedures in the kernel
+    // the public inputs contain, in addition to the kernel procedure roots:
+    //
+    // 1. The input operand stack (16 field elements),
+    // 2. The output operand stack (16 field elements),
+    // 3. The program hash (4 field elements).
+    let pub_inputs_elements = pub_inputs.to_elements();
+    let num_elements_pi = pub_inputs_elements.len();
+    // note that since we are padding the fixed length inputs, in our case the program digest, to
+    // be double-word aligned, we have to subtract `2 * WORD_SIZE` instead of `WORD_SIZE` for
+    // the program digest
+    let digests_elements = num_elements_pi - MIN_STACK_DEPTH * 2 - 2 * WORD_SIZE;
+    assert_eq!(digests_elements % WORD_SIZE, 0);
+    let num_kernel_procedures_digests = digests_elements / (2 * WORD_SIZE);
+
     // we need to provide the following instance specific data through the operand stack
     let initial_stack = vec![
         proof.context.options().grinding_factor() as u64,
-        proof.context.options().blowup_factor().ilog2() as u64,
         proof.context.options().num_queries() as u64,
         proof.context.trace_info().length().ilog2() as u64,
     ];
@@ -39,19 +53,25 @@ pub fn generate_advice_inputs(
     // build a seed for the public coin; the initial seed is the hash of public inputs and proof
     // context, but as the protocol progresses, the coin will be reseeded with the info received
     // from the prover
-    let mut advice_stack = vec![];
+    let mut advice_stack = vec![digests_elements as u64];
     let mut public_coin_seed = proof.context.to_elements();
-    public_coin_seed.append(&mut pub_inputs.to_elements());
+    public_coin_seed.extend_from_slice(&pub_inputs_elements);
 
-    // add the public inputs, which is nothing but the input and output stacks to the VM, to the
-    // advice tape
-    let pub_inputs_int: Vec<u64> = pub_inputs.to_elements().iter().map(|a| a.as_int()).collect();
-    advice_stack.extend_from_slice(&pub_inputs_int[..]);
+    // add the public inputs, which is nothing but the input and output stacks to the VM as well as
+    // the digests of the procedures making up the kernel against which the program was compiled,
+    // to the advice tape
+    let pub_inputs_int: Vec<u64> = pub_inputs_elements.iter().map(|a| a.as_int()).collect();
+    advice_stack.extend_from_slice(&pub_inputs_int);
+
+    // add a placeholder for the auxiliary randomness
+    let aux_rand_insertion_index = advice_stack.len();
+    advice_stack.extend_from_slice(&[0, 0, 0, 0]);
+    advice_stack.push(num_kernel_procedures_digests as u64);
 
     // create AIR instance for the computation specified in the proof
     let air = ProcessorAir::new(proof.trace_info().to_owned(), pub_inputs, proof.options().clone());
     let seed_digest = Rpo256::hash_elements(&public_coin_seed);
-    let mut public_coin: RpoRandomCoin = RpoRandomCoin::new(seed_digest.into());
+    let mut public_coin: RpoRandomCoin = RpoRandomCoin::new(seed_digest);
     let mut channel = VerifierChannel::new(&air, proof)?;
 
     // 1 ----- main segment trace -----------------------------------------------------------------
@@ -66,7 +86,7 @@ pub fn generate_advice_inputs(
     // generate the auxiliary random elements
     let mut aux_trace_rand_elements = vec![];
     for commitment in trace_commitments.iter().skip(1) {
-        let rand_elements: Vec<QuadExt> = air
+        let rand_elements: Vec<QuadFelt> = air
             .get_aux_rand_elements(&mut public_coin)
             .map_err(|_| VerifierError::RandomCoinError)?
             .rand_elements()
@@ -75,13 +95,21 @@ pub fn generate_advice_inputs(
         public_coin.reseed(*commitment);
     }
 
+    let alpha = aux_trace_rand_elements[0][0].to_owned();
+    let beta = aux_trace_rand_elements[0][2].to_owned();
+    advice_stack[aux_rand_insertion_index] = QuadFelt::base_element(&beta, 0).as_int();
+    advice_stack[aux_rand_insertion_index + 1] = QuadFelt::base_element(&beta, 1).as_int();
+    advice_stack[aux_rand_insertion_index + 2] = QuadFelt::base_element(&alpha, 0).as_int();
+    advice_stack[aux_rand_insertion_index + 3] = QuadFelt::base_element(&alpha, 1).as_int();
+
     // 3 ----- constraint composition trace -------------------------------------------------------
 
     // build random coefficients for the composition polynomial. we don't need them but we have to
     // generate them in order to update the random coin
-    let _constraint_coeffs: winter_air::ConstraintCompositionCoefficients<QuadExt> = air
+    let _constraint_coeffs: winter_air::ConstraintCompositionCoefficients<QuadFelt> = air
         .get_constraint_composition_coefficients(&mut public_coin)
         .map_err(|_| VerifierError::RandomCoinError)?;
+
     let constraint_commitment = channel.read_constraint_commitment();
     advice_stack.extend_from_slice(&digest_to_int_vec(&[constraint_commitment]));
     public_coin.reseed(constraint_commitment);
@@ -89,37 +117,23 @@ pub fn generate_advice_inputs(
     // 4 ----- OOD frames --------------------------------------------------------------
 
     // generate the the OOD point
-    let _z: QuadExt = public_coin.draw().unwrap();
+    let _z: QuadFelt = public_coin.draw().unwrap();
 
     // read the main and auxiliary segments' OOD frames and add them to advice tape
     let ood_trace_frame = channel.read_ood_trace_frame();
-    let ood_main_trace_frame = ood_trace_frame.main_frame();
-    let ood_aux_trace_frame = ood_trace_frame.aux_frame();
-
-    // the expected layout is:
-    // [main_current_elements, aux_current_elements, main_next_elements, aux_next_elements]
-    let mut main_and_aux_frame_states = ood_main_trace_frame.current().to_vec();
-    main_and_aux_frame_states.extend_from_slice(
-        ood_aux_trace_frame
-            .as_ref()
-            .expect("execution trace should have an auxiliary segment")
-            .current(),
-    );
-    main_and_aux_frame_states.extend_from_slice(ood_main_trace_frame.next());
-    main_and_aux_frame_states.extend_from_slice(
-        ood_aux_trace_frame
-            .as_ref()
-            .expect("execution trace should have an auxiliary segment")
-            .next(),
-    );
-
-    advice_stack.extend_from_slice(&to_int_vec(&main_and_aux_frame_states));
-    public_coin.reseed(Rpo256::hash_elements(&main_and_aux_frame_states));
-
-    // read OOD evaluations of composition polynomial columns
     let ood_constraint_evaluations = channel.read_ood_constraint_evaluations();
-    advice_stack.extend_from_slice(&to_int_vec(&ood_constraint_evaluations));
-    public_coin.reseed(Rpo256::hash_elements(&ood_constraint_evaluations));
+    let ood_evals = merge_ood_evaluations(&ood_trace_frame, &ood_constraint_evaluations);
+
+    // placeholder for the alpha_deep
+    let alpha_deep_index = advice_stack.len();
+    advice_stack.extend_from_slice(&[0, 0]);
+
+    // add OOD evaluations to advice stack
+    advice_stack.extend_from_slice(&to_int_vec(&ood_evals));
+
+    // reseed with the digest of the OOD evaluations
+    let ood_digest = Rpo256::hash_elements(&ood_evals);
+    public_coin.reseed(ood_digest);
 
     // 5 ----- FRI  -------------------------------------------------------------------------------
 
@@ -133,13 +147,24 @@ pub fn generate_advice_inputs(
     advice_stack.extend_from_slice(&to_int_vec(&poly));
 
     // reseed with FRI layer commitments
-    let _deep_coefficients = air
-        .get_deep_composition_coefficients::<QuadExt, RpoRandomCoin>(&mut public_coin)
+    let deep_coefficients = air
+        .get_deep_composition_coefficients::<QuadFelt, RpoRandomCoin>(&mut public_coin)
         .map_err(|_| VerifierError::RandomCoinError)?;
+
+    // since we are using Horner batching, the randomness will be located in the penultimate
+    // position, the last position holds the constant `1`
+    assert_eq!(
+        deep_coefficients.constraints[deep_coefficients.constraints.len() - 1],
+        QuadFelt::ONE
+    );
+    let alpha_deep = deep_coefficients.constraints[deep_coefficients.constraints.len() - 2];
+    advice_stack[alpha_deep_index] = alpha_deep.base_element(0).as_int();
+    advice_stack[alpha_deep_index + 1] = alpha_deep.base_element(1).as_int();
+
     let layer_commitments = fri_commitments_digests.clone();
     for commitment in layer_commitments.iter() {
         public_coin.reseed(*commitment);
-        let _alpha: QuadExt = public_coin.draw().expect("failed to draw random indices");
+        let _alpha: QuadFelt = public_coin.draw().expect("failed to draw random indices");
     }
 
     // 6 ----- trace and constraint queries -------------------------------------------------------
@@ -190,13 +215,13 @@ pub fn generate_advice_inputs(
 // HELPER FUNCTIONS
 // ================================================================================================
 
-pub fn digest_to_int_vec(digest: &[RpoDigest]) -> Vec<u64> {
+pub fn digest_to_int_vec(digest: &[Word]) -> Vec<u64> {
     digest
         .iter()
         .flat_map(|digest| digest.as_elements().iter().map(|e| e.as_int()))
         .collect()
 }
 
-pub fn to_int_vec(ext_felts: &[QuadExt]) -> Vec<u64> {
-    QuadExt::slice_as_base_elements(ext_felts).iter().map(|e| e.as_int()).collect()
+pub fn to_int_vec(ext_felts: &[QuadFelt]) -> Vec<u64> {
+    QuadFelt::slice_as_base_elements(ext_felts).iter().map(|e| e.as_int()).collect()
 }

@@ -3,9 +3,10 @@ use alloc::{
     vec::Vec,
 };
 
-use miden_crypto::hash::rpo::RpoDigest;
-
-use crate::mast::{MastForest, MastForestError, MastNode, MastNodeId};
+use crate::{
+    Word,
+    mast::{MastForest, MastForestError, MastNode, MastNodeId, node::MastNodeExt},
+};
 
 type ForestIndex = usize;
 
@@ -80,7 +81,7 @@ pub(crate) struct MultiMastForestNodeIter<'forest> {
     current_procedure_root_idx: u32,
     /// A map of MAST roots of all non-external nodes in mast_forests to their forest and node
     /// indices.
-    non_external_nodes: BTreeMap<RpoDigest, (ForestIndex, MastNodeId)>,
+    non_external_nodes: BTreeMap<Word, (ForestIndex, MastNodeId)>,
     /// Describes whether the node identified by [forest_index][node_index] has already been
     /// discovered. Note that this is `true` for all nodes that are in the unvisited node deque.
     discovered_nodes: Vec<Vec<bool>>,
@@ -316,15 +317,12 @@ pub(crate) enum MultiMastForestIteratorItem {
 
 #[cfg(test)]
 mod tests {
-    use miden_crypto::{ZERO, hash::rpo::RpoDigest};
 
     use super::*;
-    use crate::Operation;
+    use crate::{Operation, Word, mast::BasicBlockNode};
 
-    fn random_digest() -> RpoDigest {
-        // TODO(Al)
-        //RpoDigest::new([rand_utils::rand_value(); 4])
-        RpoDigest::new([ZERO; 4])
+    fn random_digest() -> Word {
+        Word::new([winter_rand_utils::rand_value(); 4])
     }
 
     #[test]
@@ -356,7 +354,7 @@ mod tests {
 
         let mut forest_b = MastForest::new();
         let id_ext_b = forest_b.add_external(nodeb0_digest).unwrap();
-        let id_block_b = forest_b.add_block(vec![Operation::Eqz], None).unwrap();
+        let id_block_b = forest_b.add_block(vec![Operation::Eqz], Vec::new()).unwrap();
         let id_split_b = forest_b.add_split(id_ext_b, id_block_b).unwrap();
 
         forest_b.make_root(id_split_b);
@@ -390,7 +388,7 @@ mod tests {
 
     #[test]
     fn multi_mast_forest_external_dependencies() {
-        let block_foo = MastNode::new_basic_block(vec![Operation::Drop], None).unwrap();
+        let block_foo = BasicBlockNode::new(vec![Operation::Drop], Vec::new()).unwrap();
         let mut forest_a = MastForest::new();
         let id_foo_a = forest_a.add_external(block_foo.digest()).unwrap();
         let id_call_a = forest_a.add_call(id_foo_a).unwrap();
@@ -470,7 +468,7 @@ mod tests {
     /// Stdlib where this failed on a previous implementation.
     #[test]
     fn multi_mast_forest_child_duplicate() {
-        let block_foo = MastNode::new_basic_block(vec![Operation::Drop], None).unwrap();
+        let block_foo = BasicBlockNode::new(vec![Operation::Drop], Vec::new()).unwrap();
         let mut forest = MastForest::new();
         let id_foo = forest.add_external(block_foo.digest()).unwrap();
         let id_call1 = forest.add_call(id_foo).unwrap();

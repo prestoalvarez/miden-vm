@@ -1,13 +1,16 @@
-use alloc::vec::Vec;
+use alloc::{boxed::Box, vec::Vec};
 use core::fmt;
 
-use miden_crypto::{Felt, PrimeCharacteristicRing, hash::rpo::RpoDigest};
+use miden_crypto::{Felt, Word};
 use miden_formatting::prettier::PrettyPrint;
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
 
+use super::{MastNodeErrorContext, MastNodeExt};
 use crate::{
     OPCODE_LOOP,
     chiplets::hasher,
-    mast::{DecoratorId, MastForest, MastForestError, MastNodeId, Remapping},
+    mast::{DecoratedOpLink, DecoratorId, MastForest, MastForestError, MastNodeId, Remapping},
 };
 
 // LOOP NODE
@@ -20,10 +23,13 @@ use crate::{
 /// If the top of the stack is neither `0` nor `1` when the condition is checked, the execution
 /// fails.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct LoopNode {
     body: MastNodeId,
-    digest: RpoDigest,
+    digest: Word,
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
     before_enter: Vec<DecoratorId>,
+    #[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Vec::is_empty"))]
     after_exit: Vec<DecoratorId>,
 }
 
@@ -45,7 +51,7 @@ impl LoopNode {
         let digest = {
             let body_hash = mast_forest[body].digest();
 
-            hasher::merge_in_domain(&[body_hash, RpoDigest::default()], Self::domain())
+            hasher::merge_in_domain(&[body_hash, Word::default()], Self::DOMAIN)
         };
 
         Ok(Self {
@@ -58,7 +64,7 @@ impl LoopNode {
 
     /// Returns a new [`LoopNode`] from values that are assumed to be correct.
     /// Should only be used when the source of the inputs is trusted (e.g. deserialization).
-    pub fn new_unsafe(body: MastNodeId, digest: RpoDigest) -> Self {
+    pub fn new_unsafe(body: MastNodeId, digest: Word) -> Self {
         Self {
             body,
             digest,
@@ -69,52 +75,15 @@ impl LoopNode {
 }
 
 impl LoopNode {
-    /// Returns a commitment to this Loop node.
-    ///
-    /// The commitment is computed as a hash of the loop body and an empty word ([ZERO; 4]) in
-    /// the domain defined by [Self::domain()] - i..e,:
-    /// ```
-    /// # use miden_core::mast::LoopNode;
-    /// # use miden_crypto::{hash::rpo::{RpoDigest as Digest, Rpo256 as Hasher}};
-    /// # let body_digest = Digest::default();
-    /// Hasher::merge_in_domain(&[body_digest, Digest::default()], LoopNode::domain());
-    /// ```
-    pub fn digest(&self) -> RpoDigest {
-        self.digest
-    }
-
     /// Returns the ID of the node presenting the body of the loop.
     pub fn body(&self) -> MastNodeId {
         self.body
     }
-
-    /// Returns the decorators to be executed before this node is executed.
-    pub fn before_enter(&self) -> &[DecoratorId] {
-        &self.before_enter
-    }
-
-    /// Returns the decorators to be executed after this node is executed.
-    pub fn after_exit(&self) -> &[DecoratorId] {
-        &self.after_exit
-    }
 }
 
-/// Mutators
-impl LoopNode {
-    pub fn remap_children(&self, remapping: &Remapping) -> Self {
-        let mut node = self.clone();
-        node.body = node.body.remap(remapping);
-        node
-    }
-
-    /// Sets the list of decorators to be executed before this node.
-    pub fn set_before_enter(&mut self, decorator_ids: Vec<DecoratorId>) {
-        self.before_enter = decorator_ids;
-    }
-
-    /// Sets the list of decorators to be executed after this node.
-    pub fn set_after_exit(&mut self, decorator_ids: Vec<DecoratorId>) {
-        self.after_exit = decorator_ids;
+impl MastNodeErrorContext for LoopNode {
+    fn decorators(&self) -> impl Iterator<Item = DecoratedOpLink> {
+        self.before_enter.iter().chain(&self.after_exit).copied().enumerate()
     }
 }
 
@@ -187,5 +156,75 @@ impl fmt::Display for LoopNodePrettyPrint<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use crate::prettier::PrettyPrint;
         self.pretty_print(f)
+    }
+}
+
+// MAST NODE TRAIT IMPLEMENTATION
+// ================================================================================================
+
+impl MastNodeExt for LoopNode {
+    /// Returns a commitment to this Loop node.
+    ///
+    /// The commitment is computed as a hash of the loop body and an empty word ([ZERO; 4]) in
+    /// the domain defined by [Self::DOMAIN] - i..e,:
+    /// ```
+    /// # use miden_core::mast::LoopNode;
+    /// # use miden_crypto::{Word, hash::rpo::Rpo256 as Hasher};
+    /// # let body_digest = Word::default();
+    /// Hasher::merge_in_domain(&[body_digest, Word::default()], LoopNode::DOMAIN);
+    /// ```
+    fn digest(&self) -> Word {
+        self.digest
+    }
+
+    /// Returns the decorators to be executed before this node is executed.
+    fn before_enter(&self) -> &[DecoratorId] {
+        &self.before_enter
+    }
+
+    /// Returns the decorators to be executed after this node is executed.
+    fn after_exit(&self) -> &[DecoratorId] {
+        &self.after_exit
+    }
+    /// Sets the list of decorators to be executed before this node.
+    fn append_before_enter(&mut self, decorator_ids: &[DecoratorId]) {
+        self.before_enter.extend_from_slice(decorator_ids);
+    }
+
+    /// Sets the list of decorators to be executed after this node.
+    fn append_after_exit(&mut self, decorator_ids: &[DecoratorId]) {
+        self.after_exit.extend_from_slice(decorator_ids);
+    }
+
+    /// Removes all decorators from this node.
+    fn remove_decorators(&mut self) {
+        self.before_enter.truncate(0);
+        self.after_exit.truncate(0);
+    }
+
+    fn to_display<'a>(&'a self, mast_forest: &'a MastForest) -> Box<dyn fmt::Display + 'a> {
+        Box::new(LoopNode::to_display(self, mast_forest))
+    }
+
+    fn to_pretty_print<'a>(&'a self, mast_forest: &'a MastForest) -> Box<dyn PrettyPrint + 'a> {
+        Box::new(LoopNode::to_pretty_print(self, mast_forest))
+    }
+
+    fn remap_children(&self, remapping: &Remapping) -> Self {
+        let mut node = self.clone();
+        node.body = node.body.remap(remapping);
+        node
+    }
+
+    fn has_children(&self) -> bool {
+        true
+    }
+
+    fn append_children_to(&self, target: &mut Vec<MastNodeId>) {
+        target.push(self.body());
+    }
+
+    fn domain(&self) -> Felt {
+        Self::DOMAIN
     }
 }

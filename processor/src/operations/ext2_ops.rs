@@ -18,7 +18,7 @@ impl Process {
     /// the first and second positions on the stack, c1 and c2 to the third and fourth positions,
     /// and leaves the rest of the stack unchanged.
     pub(super) fn op_ext2mul(&mut self) -> Result<(), ExecutionError> {
-        let [a0, a1, b0, b1] = self.stack.get_word(0);
+        let [a0, a1, b0, b1] = self.stack.get_word(0).into();
         self.stack.set(0, b1);
         self.stack.set(1, b0);
         //self.stack.set(2, (b0 + b1) * (a1 + a0) - b0 * a0);
@@ -35,15 +35,11 @@ impl Process {
 
 #[cfg(test)]
 mod tests {
-    type QuadFelt = BinomialExtensionField<Felt, 2>;
-    use test_utils::rand::rand_value;
-    use vm_core::BinomialExtensionField;
+    use miden_core::{Operation, QuadFelt, ZERO, mast::MastForest};
+    use miden_utils_testing::rand::rand_value;
 
-    use super::{
-        super::{Felt, MIN_STACK_DEPTH, Operation},
-        Process,
-    };
-    use crate::{DefaultHost, StackInputs, ZERO};
+    use super::*;
+    use crate::{DefaultHost, StackInputs, operations::MIN_STACK_DEPTH};
 
     // ARITHMETIC OPERATIONS
     // --------------------------------------------------------------------------------------------
@@ -56,12 +52,13 @@ mod tests {
         let stack = StackInputs::new(vec![a0, a1, b0, b1]).expect("inputs lenght too long");
         let mut host = DefaultHost::default();
         let mut process = Process::new_dummy(stack);
+        let program = &MastForest::default();
 
         // multiply the top two values
-        process.execute_op(Operation::Ext2Mul, &mut host).unwrap();
-        let a = QuadFelt::new_complex(a0, a1);
-        let b = QuadFelt::new_complex(b0, b1);
-        let c = (b * a).to_array();
+        process.execute_op(Operation::Ext2Mul, program, &mut host).unwrap();
+        let a = QuadFelt::new(a0, a1);
+        let b = QuadFelt::new(b0, b1);
+        let c = (b * a).to_base_elements();
         let expected = build_expected(&[b1, b0, c[1], c[0]]);
 
         assert_eq!(MIN_STACK_DEPTH, process.stack.depth());
@@ -71,7 +68,7 @@ mod tests {
         // calling ext2mul with a stack of minimum depth is ok
         let stack = StackInputs::new(vec![]).expect("inputs lenght too long");
         let mut process = Process::new_dummy(stack);
-        assert!(process.execute_op(Operation::Ext2Mul, &mut host).is_ok());
+        assert!(process.execute_op(Operation::Ext2Mul, program, &mut host).is_ok());
     }
 
     // HELPER FUNCTIONS

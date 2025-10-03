@@ -1,8 +1,7 @@
-use alloc::vec::Vec;
+use alloc::{string::ToString, vec::Vec};
 
-use p3_uni_stark::StarkGenericConfig;
-use vm_core::{
-    crypto::hash::{Blake3_192, Blake3_256, Hasher, Rpo256, Rpx256},
+use miden_core::{
+    crypto::hash::{Blake3_192, Blake3_256, Hasher, Poseidon2, Rpo256, Rpx256},
     utils::{ByteReader, ByteWriter, Deserializable, DeserializationError, Serializable},
 };
 use serde::{Deserialize, Serialize};
@@ -54,6 +53,7 @@ impl ExecutionProof {
             HashFunction::Blake3_256 => self.proof.conjectured_security::<Blake3_256>(),
             HashFunction::Rpo256 => self.proof.conjectured_security::<Rpo256>(),
             HashFunction::Rpx256 => self.proof.conjectured_security::<Rpx256>(),
+            HashFunction::Poseidon2 => self.proof.conjectured_security::<Poseidon2>(),
         };
         conjectured_security.bits()
          */
@@ -108,14 +108,8 @@ pub enum HashFunction {
     Rpo256 = 0x02,
     /// RPX hash function with 256-bit output.
     Rpx256 = 0x03,
-        /// Keccak hash function with 256-bit output.
-        Keccak = 0x04,
-}
-
-impl Default for HashFunction {
-    fn default() -> Self {
-        Self::Blake3_192
-    }
+    /// Poseidon2 hash function with 256-bit output.
+    Poseidon2 = 0x04,
 }
 
 impl HashFunction {
@@ -126,7 +120,7 @@ impl HashFunction {
             HashFunction::Blake3_256 => Blake3_256::COLLISION_RESISTANCE,
             HashFunction::Rpo256 => Rpo256::COLLISION_RESISTANCE,
             HashFunction::Rpx256 => Rpx256::COLLISION_RESISTANCE,
-            HashFunction::Keccak => 128,
+            HashFunction::Poseidon2 => Poseidon2::COLLISION_RESISTANCE,
         }
     }
 }
@@ -140,10 +134,27 @@ impl TryFrom<u8> for HashFunction {
             0x01 => Ok(Self::Blake3_256),
             0x02 => Ok(Self::Rpo256),
             0x03 => Ok(Self::Rpx256),
-            0x04 => Ok(Self::Keccak),
+            0x04 => Ok(Self::Poseidon2),
             _ => Err(DeserializationError::InvalidValue(format!(
                 "the hash function representation {repr} is not valid!"
             ))),
+        }
+    }
+}
+
+impl TryFrom<&str> for HashFunction {
+    type Error = super::ExecutionOptionsError;
+
+    fn try_from(hash_fn_str: &str) -> Result<Self, Self::Error> {
+        match hash_fn_str {
+            "blake3-192" => Ok(Self::Blake3_192),
+            "blake3-256" => Ok(Self::Blake3_256),
+            "rpo" => Ok(Self::Rpo256),
+            "rpx" => Ok(Self::Rpx256),
+            "poseidon2" => Ok(Self::Poseidon2),
+            _ => Err(super::ExecutionOptionsError::InvalidHashFunction {
+                hash_function: hash_fn_str.to_string(),
+            }),
         }
     }
 }
@@ -178,41 +189,19 @@ impl Deserializable for ExecutionProof {
         Ok(ExecutionProof { proof, hash_fn })
     }
 }
- */
 
- use p3_commit::Pcs;
+// TESTING UTILS
+// ================================================================================================
 
-type Com<SC> = <<SC as StarkGenericConfig>::Pcs as Pcs<
-    <SC as StarkGenericConfig>::Challenge,
-    <SC as StarkGenericConfig>::Challenger,
->>::Commitment;
-type PcsProof<SC> = <<SC as StarkGenericConfig>::Pcs as Pcs<
-    <SC as StarkGenericConfig>::Challenge,
-    <SC as StarkGenericConfig>::Challenger,
->>::Proof;
-
-#[derive(Serialize, Deserialize)]
-#[serde(bound = "")]
-pub struct Proof<SC: StarkGenericConfig> {
-    pub commitments: Commitments<Com<SC>>,
-    pub opened_values: OpenedValues<SC::Challenge>,
-    pub opening_proof: PcsProof<SC>,
-    pub degree_bits: usize,
+#[cfg(any(test, feature = "testing"))]
+impl ExecutionProof {
+    /// Creates a dummy `ExecutionProof` for testing purposes only.
+    ///
+    /// Uses a dummy `Proof` and the default `HashFunction`.
+    pub fn new_dummy() -> Self {
+        ExecutionProof {
+            proof: Proof::new_dummy(),
+            hash_fn: HashFunction::Blake3_192,
+        }
+    }
 }
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Commitments<Com> {
-    pub trace: Com,
-    pub aux_trace: Com,
-    pub quotient_chunks: Com,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct OpenedValues<Challenge> {
-    pub trace_local: Vec<Challenge>,
-    pub trace_next: Vec<Challenge>,
-    pub aux_trace_local: Vec<Challenge>,
-    pub aux_trace_next: Vec<Challenge>,
-    pub quotient_chunks: Vec<Vec<Challenge>>,
-}
-

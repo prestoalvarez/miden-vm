@@ -1,5 +1,8 @@
 use core::fmt;
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 // DEBUG OPTIONS
 // ================================================================================================
 
@@ -8,6 +11,8 @@ use core::fmt;
 /// These options define the debug info which gets printed out when the Debug decorator is
 /// executed.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(all(feature = "arbitrary", test), miden_serde_test_macros::serde_test)]
 pub enum DebugOptions {
     /// Print out the entire contents of the stack for the current execution context.
     StackAll,
@@ -26,6 +31,10 @@ pub enum DebugOptions {
     /// First parameter specifies the starting address, second -- the ending address, and the third
     /// specifies the overall number of locals.
     LocalInterval(u16, u16, u16),
+    /// Prints out the top n items of the advice stack for the current context.
+    ///
+    /// If `n = 0`, the entire stack is printed.
+    AdvStackTop(u16),
 }
 
 impl crate::prettier::PrettyPrint for DebugOptions {
@@ -44,6 +53,7 @@ impl fmt::Display for DebugOptions {
             Self::LocalInterval(start, end, _) => {
                 write!(f, "local.{start}.{end}")
             },
+            Self::AdvStackTop(n) => write!(f, "adv_stack.{n}"),
         }
     }
 }

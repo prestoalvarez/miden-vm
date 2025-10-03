@@ -1,4 +1,4 @@
-use crate::trace::MIN_TRACE_LEN;
+use alloc::string::String;
 
 // EXECUTION OPTIONS ERROR
 // ================================================================================================
@@ -9,8 +9,12 @@ pub enum ExecutionOptionsError {
         "expected number of cycles {expected_cycles} must be smaller than the maximum number of cycles {max_cycles}"
     )]
     ExpectedCyclesTooBig { max_cycles: u32, expected_cycles: u32 },
+    #[error("maximum number of cycles {max_cycles} must be greater than {min_cycles_limit}")]
+    MaxCycleNumTooSmall { max_cycles: u32, min_cycles_limit: usize },
+    #[error("maximum number of cycles {max_cycles} must be less than {max_cycles_limit}")]
+    MaxCycleNumTooBig { max_cycles: u32, max_cycles_limit: u32 },
     #[error(
-        "maximum number of cycles {0} must be greater than the minimum number of cycles {MIN_TRACE_LEN}"
+        "invalid hash function '{hash_function}'. Valid options are: blake3-192, blake3-256, rpo, rpx, poseidon2"
     )]
-    MaxCycleNumTooSmall(u32),
+    InvalidHashFunction { hash_function: String },
 }

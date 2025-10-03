@@ -21,6 +21,9 @@
 //! (advice map section)
 //! - Advice map (AdviceMap)
 //!
+//! (error_codes map section)
+//! - Error codes map (BTreeMap<u64, String>)
+//!
 //! (decorator data section)
 //! - Decorator data
 //! - String table
@@ -35,14 +38,22 @@
 //! - before enter decorators (`Vec<(MastNodeId, Vec<DecoratorId>)>`)
 //! - after exit decorators (`Vec<(MastNodeId, Vec<DecoratorId>)>`)
 
-use alloc::vec::Vec;
+use alloc::{
+    collections::BTreeMap,
+    string::{String, ToString},
+    sync::Arc,
+    vec::Vec,
+};
 
 use decorator::{DecoratorDataBuilder, DecoratorInfo};
 use string_table::StringTable;
-use winter_utils::{ByteReader, ByteWriter, Deserializable, DeserializationError, Serializable};
 
-use super::{DecoratorId, MastForest, MastNode, MastNodeId};
-use crate::AdviceMap;
+use super::{DecoratedOpLink, DecoratorId, MastForest, MastNode, MastNodeId};
+use crate::{
+    AdviceMap,
+    mast::node::MastNodeExt,
+    utils::{ByteReader, ByteWriter, Deserializable, DeserializationError, Serializable},
+};
 
 mod decorator;
 
@@ -98,7 +109,7 @@ impl Serializable for MastForest {
         let mut before_enter_decorators: Vec<(usize, Vec<DecoratorId>)> = Vec::new();
         let mut after_exit_decorators: Vec<(usize, Vec<DecoratorId>)> = Vec::new();
 
-        let mut basic_block_decorators: Vec<(usize, Vec<(usize, DecoratorId)>)> = Vec::new();
+        let mut basic_block_decorators: Vec<(usize, Vec<DecoratedOpLink>)> = Vec::new();
 
         // magic & version
         target.write_bytes(MAGIC);
@@ -129,7 +140,10 @@ impl Serializable for MastForest {
                 let ops_offset = if let MastNode::Block(basic_block) = mast_node {
                     let ops_offset = basic_block_data_builder.encode_basic_block(basic_block);
 
-                    basic_block_decorators.push((mast_node_id, basic_block.decorators().clone()));
+                    basic_block_decorators.push((
+                        mast_node_id,
+                        basic_block.indexed_decorator_iter().collect::<Vec<_>>(),
+                    ));
 
                     ops_offset
                 } else {
@@ -148,8 +162,10 @@ impl Serializable for MastForest {
             mast_node_info.write_into(target);
         }
 
-        // TODO(Al)
-        // self.advice_map.write_into(target);
+        self.advice_map.write_into(target);
+        let error_codes: BTreeMap<u64, String> =
+            self.error_codes.iter().map(|(k, v)| (*k, v.to_string())).collect();
+        error_codes.write_into(target);
 
         // write all decorator data below
 
@@ -197,6 +213,10 @@ impl Deserializable for MastForest {
         // TODO(Al)
         //let advice_map = AdviceMap::read_from(source)?;
         let advice_map = AdviceMap::default();
+
+        let error_codes: BTreeMap<u64, String> = Deserializable::read_from(source)?;
+        let error_codes: BTreeMap<u64, Arc<str>> =
+            error_codes.into_iter().map(|(k, v)| (k, Arc::from(v))).collect();
 
         // Reading Decorators
         let decorator_data: Vec<u8> = Deserializable::read_from(source)?;
@@ -266,15 +286,17 @@ impl Deserializable for MastForest {
             read_before_after_decorators(source, &mast_forest)?;
         for (node_id, decorator_ids) in before_enter_decorators {
             let node_id = MastNodeId::from_usize_safe(node_id, &mast_forest)?;
-            mast_forest.set_before_enter(node_id, decorator_ids);
+            mast_forest.append_before_enter(node_id, &decorator_ids);
         }
 
         let after_exit_decorators: Vec<(usize, Vec<DecoratorId>)> =
             read_before_after_decorators(source, &mast_forest)?;
         for (node_id, decorator_ids) in after_exit_decorators {
             let node_id = MastNodeId::from_usize_safe(node_id, &mast_forest)?;
-            mast_forest.set_after_exit(node_id, decorator_ids);
+            mast_forest.append_after_exit(node_id, &decorator_ids);
         }
+
+        mast_forest.error_codes = error_codes;
 
         Ok(mast_forest)
     }
@@ -314,7 +336,7 @@ fn read_block_decorators<R: ByteReader>(
         let node_id: usize = source.read()?;
 
         let decorator_vec_len: usize = source.read()?;
-        let mut inner_vec: Vec<(usize, DecoratorId)> = Vec::with_capacity(decorator_vec_len);
+        let mut inner_vec: Vec<DecoratedOpLink> = Vec::with_capacity(decorator_vec_len);
         for _ in 0..decorator_vec_len {
             let op_id: usize = source.read()?;
             let decorator_id = DecoratorId::from_u32_safe(source.read()?, mast_forest)?;
