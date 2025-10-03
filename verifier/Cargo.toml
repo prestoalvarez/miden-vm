@@ -22,22 +22,40 @@ default = ["std"]
 std = ["miden-air/std", "miden-core/std", "thiserror/std", "winter-verifier/std"]
 
 [dependencies]
-air = { package = "miden-air", path = "../air", version = "0.14", default-features = false }
-vm-core = { package = "miden-core", path = "../core", version = "0.14", default-features = false }
-p3-matrix = { version = "0.3.0" }
-p3-uni-stark = { version = "0.3.0" }
-p3-field = { version = "0.3.0" }
-p3-merkle-tree = { version = "0.3.0" }
-p3-commit = { version = "0.3.0" }
-p3-fri = { version = "0.3.0" }
-p3-dft = { version = "0.3.0" }
-p3-poseidon2 = { version = "0.3.0" }
-p3-challenger = { version = "0.3.0" }
-p3-goldilocks = { version = "0.3.0" }
-p3-symmetric = { version = "0.3.0" }
-p3-util = { version = "0.3.0" }
-p3-blake3 = { version = "0.3.0" }
-p3-air = { version = "0.3.0" }
+# air = { package = "miden-air", path = "../air", version = "0.14", default-features = false }
+# vm-core = { package = "miden-core", path = "../core", version = "0.14", default-features = false }
+
+
+# p3-matrix = { version = "0.3.0" }
+# p3-uni-stark = { version = "0.3.0" }
+# p3-field = { version = "0.3.0" }
+# p3-merkle-tree = { version = "0.3.0" }
+# p3-commit = { version = "0.3.0" }
+# p3-fri = { version = "0.3.0" }
+# p3-dft = { version = "0.3.0" }
+# p3-poseidon2 = { version = "0.3.0" }
+# p3-challenger = { version = "0.3.0" }
+# p3-goldilocks = { version = "0.3.0" }
+# p3-symmetric = { version = "0.3.0" }
+# p3-util = { version = "0.3.0" }
+# p3-blake3 = { version = "0.3.0" }
+# p3-air = { version = "0.3.0" }
+
+p3-matrix        = { branch = "zz/migrate-plonky3", default-features = false, git = "https://github.com/0xMiden/Plonky3/" }
+p3-uni-stark = { branch = "zz/migrate-plonky3", default-features = false, git = "https://github.com/0xMiden/Plonky3/" }
+p3-field      = { branch = "zz/migrate-plonky3", default-features = false, git = "https://github.com/0xMiden/Plonky3/" }
+p3-merkle-tree  = { branch = "zz/migrate-plonky3", default-features = false, git = "https://github.com/0xMiden/Plonky3/" }
+p3-commit  = { branch = "zz/migrate-plonky3", default-features = false, git = "https://github.com/0xMiden/Plonky3/" }
+p3-fri        = { branch = "zz/migrate-plonky3", default-features = false, git = "https://github.com/0xMiden/Plonky3/" }
+p3-dft = { branch = "zz/migrate-plonky3", default-features = false, git = "https://github.com/0xMiden/Plonky3/" }
+p3-poseidon2      = { branch = "zz/migrate-plonky3", default-features = false, git = "https://github.com/0xMiden/Plonky3/" }
+p3-challenger  = { branch = "zz/migrate-plonky3", default-features = false, git = "https://github.com/0xMiden/Plonky3/" }
+p3-goldilocks  = { branch = "zz/migrate-plonky3", default-features = false, git = "https://github.com/0xMiden/Plonky3/" }
+p3-symmetric = { branch = "zz/migrate-plonky3", default-features = false, git = "https://github.com/0xMiden/Plonky3/" }
+p3-util      = { branch = "zz/migrate-plonky3", default-features = false, git = "https://github.com/0xMiden/Plonky3/" }
+p3-blake3  = { branch = "zz/migrate-plonky3", default-features = false, git = "https://github.com/0xMiden/Plonky3/" }
+p3-air  = { branch = "zz/migrate-plonky3", default-features = false, git = "https://github.com/0xMiden/Plonky3/" }
+
 itertools = "0.12"
 
 serde = { version = "1.0", features = ["derive"]}

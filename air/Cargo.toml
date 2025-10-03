@@ -32,17 +32,24 @@ testing = []
 
 [dependencies]
 thiserror = { workspace = true }
-vm-core = { package = "miden-core", path = "../core", version = "0.14", default-features = false }
-winter-air = { package = "winter-air", version = "0.12", default-features = false }
-p3-air = { version = "0.3.0" }
-p3-matrix = { version = "0.3.0" }
-p3-field = { version = "0.3.0" }
-p3-uni-stark = { version = "0.3.0" }
-p3-commit = { version = "0.3.0" }
+# vm-core = { package = "miden-core", path = "../core", version = "0.14", default-features = false }
+# winter-air= { workspace = true }
+# p3-air = { version = "0.3.0" }
+# p3-matrix = { version = "0.3.0" }
+# p3-field = { version = "0.3.0" }
+# p3-uni-stark = { version = "0.3.0" }
+# p3-commit = { version = "0.3.0" }
+
+p3-air        = { branch = "zz/migrate-plonky3", default-features = false, git = "https://github.com/0xMiden/Plonky3/" }
+p3-matrix = { branch = "zz/migrate-plonky3", default-features = false, git = "https://github.com/0xMiden/Plonky3/" }
+p3-field      = { branch = "zz/migrate-plonky3", default-features = false, git = "https://github.com/0xMiden/Plonky3/" }
+p3-uni-stark  = { branch = "zz/migrate-plonky3", default-features = false, git = "https://github.com/0xMiden/Plonky3/" }
+p3-commit  = { branch = "zz/migrate-plonky3", default-features = false, git = "https://github.com/0xMiden/Plonky3/" }
 
 serde = { version = "1.0", features = ["derive"]}
 bincode = "1.3"
 miden-core.workspace = true
+winter-air.workspace = true
 winter-prover.workspace = true
 
 [dev-dependencies]

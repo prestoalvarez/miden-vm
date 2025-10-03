@@ -21,8 +21,8 @@ metal = ["dep:miden-gpu", "dep:elsa", "dep:pollster", "concurrent", "std"]
 std = ["miden-air/std", "miden-debug-types/std", "miden-processor/std", "winter-prover/std"]
 
 [dependencies]
-air = { package = "miden-air", path = "../air", version = "0.14", default-features = false }
-processor = { package = "miden-processor", path = "../processor", version = "0.14", default-features = false }
+# air = { package = "miden-air", path = "../air", default-features = false }
+# processor = { package = "miden-processor", path = "../processor", default-features = false }
 
 p3-matrix = { version = "0.3.0" }
 p3-uni-stark = { version = "0.3.0", features = ["parallel"] }

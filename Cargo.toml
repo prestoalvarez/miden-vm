@@ -56,7 +56,9 @@ miden-utils-testing = { path = "./crates/utils/testing", version = "0.1", packag
 miden-verifier = { path = "./verifier", version = "0.19", default-features = false }
 
 # Miden crates
-miden-crypto = { version = "0.17", default-features = false }
+
+miden-crypto = { git = "https://github.com/0xMiden/crypto", branch = "plonky3-migration" }
+# miden-crypto = { version = "0.17", default-features = false }
 miden-formatting = { version = "0.1", default-features = false }
 midenc-hir-type = { version = "0.4", default-features = false }
 
@@ -86,5 +88,5 @@ winter-utils = { version = "0.13", default-features = false }
 winter-verifier = { version = "0.13", default-features = false }
 
 
-[patch.crates-io]
-miden-crypto = { git = "https://github.com/0xMiden/crypto", branch = "plonky3-migration" }
+# [patch.crates-io]
+# miden-crypto = { git = "https://github.com/0xMiden/crypto", branch = "plonky3-migration" }
