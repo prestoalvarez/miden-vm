@@ -167,22 +167,24 @@ pub fn verify(
             todo!()
         },
         HashFunction::Rpx256 => {
-            let opts = AcceptableOptions::OptionSet(vec![
-                ProvingOptions::RECURSIVE_96_BITS,
-                ProvingOptions::RECURSIVE_128_BITS,
-            ]);
-            verify_proof::<ProcessorAir, Rpx256, RpxRandomCoin, MerkleTree<_>>(
-                proof, pub_inputs, &opts,
-            )
+            // let opts = AcceptableOptions::OptionSet(vec![
+            //     ProvingOptions::RECURSIVE_96_BITS,
+            //     ProvingOptions::RECURSIVE_128_BITS,
+            // ]);
+            // verify_proof::<ProcessorAir, Rpx256, RpxRandomCoin, MerkleTree<_>>(
+            //     proof, pub_inputs, &opts,
+            // )
+            todo!()
         },
         HashFunction::Poseidon2 => {
-            let opts = AcceptableOptions::OptionSet(vec![
-                ProvingOptions::RECURSIVE_96_BITS,
-                ProvingOptions::REGULAR_128_BITS,
-            ]);
-            verify_proof::<ProcessorAir, Poseidon2, WinterRandomCoin<_>, MerkleTree<_>>(
-                proof, pub_inputs, &opts,
-            )
+            // let opts = AcceptableOptions::OptionSet(vec![
+            //     ProvingOptions::RECURSIVE_96_BITS,
+            //     ProvingOptions::REGULAR_128_BITS,
+            // ]);
+            // verify_proof::<ProcessorAir, Poseidon2, WinterRandomCoin<_>, MerkleTree<_>>(
+            //     proof, pub_inputs, &opts,
+            // )
+            todo!()
         },
     }
     .map_err(|source| VerificationError::ProgramVerificationError(program_hash, source))?;
