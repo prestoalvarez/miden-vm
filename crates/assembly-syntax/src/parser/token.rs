@@ -2,9 +2,10 @@ use alloc::string::String;
 use core::fmt;
 
 use miden_core::{
-    Felt, FieldElement, StarkField,
+    Felt,
     utils::{ByteReader, ByteWriter, Deserializable, DeserializationError, Serializable},
 };
+use miden_crypto::PrimeField64;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -117,10 +118,10 @@ impl fmt::Display for WordValue {
         write!(
             f,
             "{:#08x}{:08x}{:08x}{:08x}",
-            &self.0[0].as_int(),
-            &self.0[1].as_int(),
-            &self.0[2].as_int(),
-            &self.0[3].as_int(),
+            &self.0[0].as_canonical_u64(),
+            &self.0[1].as_canonical_u64(),
+            &self.0[2].as_canonical_u64(),
+            &self.0[3].as_canonical_u64(),
         )
     }
 }
@@ -149,18 +150,24 @@ impl PartialOrd for WordValue {
 impl Ord for WordValue {
     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         let (WordValue([l0, l1, l2, l3]), WordValue([r0, r1, r2, r3])) = (self, other);
-        l0.as_int()
-            .cmp(&r0.as_int())
-            .then_with(|| l1.as_int().cmp(&r1.as_int()))
-            .then_with(|| l2.as_int().cmp(&r2.as_int()))
-            .then_with(|| l3.as_int().cmp(&r3.as_int()))
+        l0.as_canonical_u64()
+            .cmp(&r0.as_canonical_u64())
+            .then_with(|| l1.as_canonical_u64().cmp(&r1.as_canonical_u64()))
+            .then_with(|| l2.as_canonical_u64().cmp(&r2.as_canonical_u64()))
+            .then_with(|| l3.as_canonical_u64().cmp(&r3.as_canonical_u64()))
     }
 }
 
 impl core::hash::Hash for WordValue {
     fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
         let WordValue([a, b, c, d]) = self;
-        [a.as_int(), b.as_int(), c.as_int(), d.as_int()].hash(state)
+        [
+            a.as_canonical_u64(),
+            b.as_canonical_u64(),
+            c.as_canonical_u64(),
+            d.as_canonical_u64(),
+        ]
+        .hash(state)
     }
 }
 

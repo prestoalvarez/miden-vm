@@ -1458,6 +1458,7 @@ dependencies = [
  "lalrpop-util",
  "log",
  "miden-core",
+ "miden-crypto",
  "miden-debug-types",
  "miden-serde-test-macros",
  "miden-utils-diagnostics",

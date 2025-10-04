@@ -10,6 +10,7 @@ use alloc::{
 };
 
 use miden_core::{Word, crypto::hash::Rpo256};
+use miden_crypto::hash::algebraic_sponge::AlgebraicSponge;
 use miden_debug_types::{SourceFile, Span, Spanned};
 use smallvec::SmallVec;
 
