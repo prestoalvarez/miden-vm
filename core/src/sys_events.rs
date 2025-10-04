@@ -1,6 +1,6 @@
 use core::fmt;
 
-use crate::EventId;
+use crate::EventId;use miden_crypto::PrimeField64;
 
 // SYSTEM EVENTS
 // ================================================================================================
@@ -263,7 +263,7 @@ impl TryFrom<EventId> for SystemEvent {
     type Error = EventId;
 
     fn try_from(event_id: EventId) -> Result<Self, Self::Error> {
-        let value: u8 = event_id.as_felt().as_int().try_into().map_err(|_| event_id)?;
+        let value: u8 = event_id.as_felt().as_canonical_u64().try_into().map_err(|_| event_id)?;
 
         match value {
             EVENT_MERKLE_NODE_MERGE => Ok(SystemEvent::MerkleNodeMerge),

@@ -8,7 +8,7 @@ pub use decorators::{AssemblyOp, DebugOptions, Decorator, DecoratorList};
 use opcode_constants::*;
 
 use crate::{
-    Felt,
+    Felt,PrimeField64,
     utils::{ByteReader, ByteWriter, Deserializable, DeserializationError, Serializable},
 };
 
@@ -811,7 +811,7 @@ impl Serializable for Operation {
             | Operation::U32assert2(err_code) => {
                 err_code.write_into(target);
             },
-            Operation::Push(value) => value.as_int().write_into(target),
+            Operation::Push(value) => value.as_canonical_u64().write_into(target),
 
             // Note: we explicitly write out all the operations so that whenever we make a
             // modification to the `Operation` enum, we get a compile error here. This

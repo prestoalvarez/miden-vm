@@ -1,9 +1,9 @@
 use alloc::{collections::BTreeMap, vec::Vec};
 
-use miden_crypto::hash::{
-    Digest,
+use miden_crypto::hash::{  
     blake::{Blake3_256, Blake3Digest},
 };
+use winter_crypto::Digest;use miden_crypto::PrimeField64;
 
 use crate::{
     Operation, Word,
@@ -81,7 +81,7 @@ impl MastNodeFingerprint {
                         // we include the operation index to distinguish between basic blocks that
                         // would have the same assert instructions, but in a different order
                         bytes_to_hash.extend(op_idx.to_le_bytes());
-                        let inner_value = u64::from(*inner_value);
+                        let inner_value = inner_value.as_canonical_u64();
                         bytes_to_hash.extend(inner_value.to_le_bytes());
                     }
                 }

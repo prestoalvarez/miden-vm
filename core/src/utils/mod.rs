@@ -20,9 +20,9 @@ pub use winter_utils::group_slice_elements;
 
 use crate::{Felt, Word};
 
-pub mod math {
-    pub use winter_math::batch_inversion;
-}
+// pub mod math {
+//     pub use winter_math::batch_inversion;
+// }
 
 // TO ELEMENTS
 // ================================================================================================

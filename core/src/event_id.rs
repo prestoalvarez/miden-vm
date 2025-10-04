@@ -1,6 +1,6 @@
 use core::fmt::{Display, Formatter};
 
-use crate::{Felt, utils::hash_string_to_word};
+use crate::{Felt, utils::hash_string_to_word, PrimeField64};
 
 /// A type-safe wrapper around a [`Felt`] that represents an event identifier.
 ///
@@ -51,8 +51,8 @@ impl EventId {
 
     /// Returns `true` if this event ID is reserved for a
     /// [`SystemEvent`](crate::sys_events::SystemEvent).
-    pub const fn is_reserved(&self) -> bool {
-        let value = self.0.as_int();
+    pub fn is_reserved(&self) -> bool {
+        let value = self.0.as_canonical_u64();
         value <= u8::MAX as u64
     }
 }

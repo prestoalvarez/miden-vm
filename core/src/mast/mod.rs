@@ -19,6 +19,7 @@ pub use node::{
     JoinNode, LoopNode, MastNode, MastNodeErrorContext, MastNodeExt, OP_BATCH_SIZE, OP_GROUP_SIZE,
     OpBatch, OperationOrDecorator, SplitNode,
 };
+use miden_crypto::AlgebraicSponge;use miden_crypto::PrimeField64;
 
 use crate::{
     AdviceMap, Decorator, DecoratorList, Felt, LexicographicWord, Operation, Word,
@@ -512,13 +513,13 @@ impl MastForest {
     pub fn register_error(&mut self, msg: Arc<str>) -> Felt {
         let code: Felt = error_code_from_msg(&msg);
         // we use u64 as keys for the map
-        self.error_codes.insert(code.as_int(), msg);
+        self.error_codes.insert(code.as_canonical_u64(), msg);
         code
     }
 
     /// Given an error code as a Felt, resolves it to its corresponding error message.
     pub fn resolve_error_message(&self, code: Felt) -> Option<Arc<str>> {
-        let key = u64::from(code);
+        let key = code.as_canonical_u64();
         self.error_codes.get(&key).cloned()
     }
 }

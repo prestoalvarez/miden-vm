@@ -13,15 +13,19 @@ use miden_core::{
     ExtensionOf, ONE, ProgramInfo, StackInputs, StackOutputs, Word, ZERO,
     utils::{ByteReader, ByteWriter, Deserializable, Serializable},
 };
-use winter_air::{
-    Air, AirContext, Assertion, EvaluationFrame, ProofOptions as WinterProofOptions, TraceInfo,
-    TransitionConstraintDegree,
-};
+// use winter_air::{
+//     Air, AirContext, Assertion, EvaluationFrame, ProofOptions as WinterProofOptions, TraceInfo,
+//     TransitionConstraintDegree,
+// };
 use winter_prover::{
     crypto::{RandomCoin, RandomCoinError},
     math::get_power_series,
     matrix::ColMatrix,
 };
+use p3_air::{AirBuilderWithPublicValues, PermutationAirBuilder};
+pub use p3_air::{Air, AirBuilder, BaseAir};
+use p3_field::PrimeCharacteristicRing;
+use p3_matrix::Matrix;
 
 mod constraints;
 //pub use constraints::stack;
@@ -37,7 +41,7 @@ mod options;
 mod proof;
 pub use proof::{Proof, Commitments, OpenedValues};
 
-mod air_builder;
+// mod air_builder;
 
 mod utils;
 
@@ -337,40 +341,67 @@ impl PublicInputs {
         }
     }
 
-impl miden_core::ToElements<Felt> for PublicInputs {
-    fn to_elements(&self) -> Vec<Felt> {
-        let mut result = self.stack_inputs.to_vec();
-        result.append(&mut self.stack_outputs.to_vec());
-        result.append(&mut self.program_info.to_elements());
+
+    pub fn stack_inputs(&self) -> StackInputs {
+        self.stack_inputs
+    }
+
+    pub fn stack_outputs(&self) -> StackOutputs {
+        self.stack_outputs
+    }
+
+    pub fn program_info(&self) -> ProgramInfo {
+        self.program_info.clone()
+    }
+
+    /// Converts public inputs into a vector of field elements (Felt) in the canonical order:
+    /// - program info elements
+    /// - stack inputs
+    /// - stack outputs
+    pub fn to_elements(&self) -> Vec<Felt> {
+        let mut result = self.program_info.to_elements();
+        let mut ins = self.stack_inputs.to_vec();
+        result.append(&mut ins);
+        let mut outs = self.stack_outputs.to_vec();
+        result.append(&mut outs);
         result
     }
 }
 
+// impl miden_core::ToElements<Felt> for PublicInputs {
+//     fn to_elements(&self) -> Vec<Felt> {
+//         let mut result = self.stack_inputs.to_vec();
+//         result.append(&mut self.stack_outputs.to_vec());
+//         result.append(&mut self.program_info.to_elements());
+//         result
+//     }
+// }
+
 // SERIALIZATION
 // ================================================================================================
 
-impl Serializable for PublicInputs {
-    fn write_into<W: ByteWriter>(&self, target: &mut W) {
-        self.program_info.write_into(target);
-        self.stack_inputs.write_into(target);
-        self.stack_outputs.write_into(target);
-    }
-}
+// impl Serializable for PublicInputs {
+//     fn write_into<W: ByteWriter>(&self, target: &mut W) {
+//         self.program_info.write_into(target);
+//         self.stack_inputs.write_into(target);
+//         self.stack_outputs.write_into(target);
+//     }
+// }
 
-impl Deserializable for PublicInputs {
-    fn read_from<R: ByteReader>(source: &mut R) -> Result<Self, DeserializationError> {
-        let program_info = ProgramInfo::read_from(source)?;
-        let stack_inputs = StackInputs::read_from(source)?;
-        let stack_outputs = StackOutputs::read_from(source)?;
+// impl Deserializable for PublicInputs {
+//     fn read_from<R: ByteReader>(source: &mut R) -> Result<Self, DeserializationError> {
+//         let program_info = ProgramInfo::read_from(source)?;
+//         let stack_inputs = StackInputs::read_from(source)?;
+//         let stack_outputs = StackOutputs::read_from(source)?;
 
-        Ok(PublicInputs {
-            program_info,
-            stack_inputs,
-            stack_outputs,
-        })
-    }
-}
-*/
+//         Ok(PublicInputs {
+//             program_info,
+//             stack_inputs,
+//             stack_outputs,
+//         })
+//     }
+// }
+// */
 
 #[derive(Default)]
 pub struct ProcessorAir;

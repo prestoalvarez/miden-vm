@@ -1,10 +1,10 @@
 use alloc::vec::Vec;
 use core::ops::Deref;
 
-use miden_crypto::{WORD_SIZE, Word, ZERO};
+use miden_crypto::{WORD_SIZE, Word, ZERO,PrimeCharacteristicRing, PrimeField64};
 
 use super::{ByteWriter, Felt, MIN_STACK_DEPTH, OutputError, Serializable};
-use crate::utils::{ByteReader, Deserializable, DeserializationError, range};
+use crate::utils::{ByteReader, Deserializable, DeserializationError, range, };
 
 // STACK OUTPUTS
 // ================================================================================================

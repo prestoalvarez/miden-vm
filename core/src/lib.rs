@@ -90,12 +90,10 @@ pub mod crypto {
 
 pub mod mast;
 
-pub use winter_math::{
-    ExtensionOf, FieldElement, StarkField, ToElements,
-    fields::{QuadExtension, f64::BaseElement as Felt},
-    polynom,
-};
-pub type QuadFelt = QuadExtension<Felt>;
+pub use miden_crypto::Felt;
+pub use miden_crypto::BinomialExtensionField;
+pub use miden_crypto::PrimeField64;
+pub type QuadFelt = BinomialExtensionField<Felt, 5>;
 
 pub mod prettier {
     pub use miden_formatting::{prettier::*, pretty_via_display, pretty_via_to_string};

@@ -29,14 +29,12 @@ std = [
     "miden-debug-types/std",
     "miden-formatting/std",
     "thiserror/std",
-    "winter-math/std",
     "winter-utils/std",
 ]
 serde = [
     "dep:serde",
     "miden-crypto/serde",
     "miden-debug-types/serde",
-    "winter-math/serde",
 ]
 arbitrary = ["dep:proptest", "dep:proptest-derive"]
 testing = ["arbitrary" ]
@@ -55,7 +53,7 @@ proptest = { workspace = true, optional = true }
 proptest-derive = { workspace = true, optional = true }
 serde = { workspace = true, optional = true, features = ["derive"] }
 thiserror.workspace = true
-winter-math.workspace = true
+winter-crypto.workspace = true
 winter-utils.workspace = true
 
 [dev-dependencies]
