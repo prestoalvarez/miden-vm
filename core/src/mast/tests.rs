@@ -2,7 +2,6 @@ use alloc::vec::Vec;
 
 use miden_crypto::WORD_SIZE;
 use proptest::prelude::*;
-use winter_math::FieldElement;
 use winter_rand_utils::prng_array;
 
 use crate::{

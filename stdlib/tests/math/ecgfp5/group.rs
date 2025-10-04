@@ -223,7 +223,13 @@ fn test_ec_ext5_point_validate(a0: u64, a1: u64, a2: u64, a3: u64, a4: u64, shou
     let w = Ext5::new(a0, a1, a2, a3, a4);
     let flg = ECExt5::validate(w);
 
-    let mut stack = [w.a0.as_canonical_u64(), w.a1.as_canonical_u64(), w.a2.as_canonical_u64(), w.a3.as_canonical_u64(), w.a4.as_canonical_u64()];
+    let mut stack = [
+        w.a0.as_canonical_u64(),
+        w.a1.as_canonical_u64(),
+        w.a2.as_canonical_u64(),
+        w.a3.as_canonical_u64(),
+        w.a4.as_canonical_u64(),
+    ];
     stack.reverse();
 
     let test = build_test!(source, &stack);
@@ -262,7 +268,13 @@ fn test_ec_ext5_point_decode(a0: u64, a1: u64, a2: u64, a3: u64, a4: u64, should
     let w = Ext5::new(a0, a1, a2, a3, a4);
     let (point, flg) = ECExt5::decode(w);
 
-    let mut stack = [w.a0.as_canonical_u64(), w.a1.as_canonical_u64(), w.a2.as_canonical_u64(), w.a3.as_canonical_u64(), w.a4.as_canonical_u64()];
+    let mut stack = [
+        w.a0.as_canonical_u64(),
+        w.a1.as_canonical_u64(),
+        w.a2.as_canonical_u64(),
+        w.a3.as_canonical_u64(),
+        w.a4.as_canonical_u64(),
+    ];
     stack.reverse();
 
     let test = build_test!(source, &stack);

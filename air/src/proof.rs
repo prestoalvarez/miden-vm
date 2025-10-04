@@ -95,8 +95,7 @@ impl ExecutionProof {
 // ================================================================================================
 
 /// A hash function used during STARK proof generation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(bound = "")]
 #[repr(u8)]
 pub enum HashFunction {
@@ -189,7 +188,7 @@ impl Deserializable for ExecutionProof {
         Ok(ExecutionProof { proof, hash_fn })
     }
 }
-
+*/
 // TESTING UTILS
 // ================================================================================================
 

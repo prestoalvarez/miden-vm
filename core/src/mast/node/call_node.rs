@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, vec::Vec};
 use core::fmt;
 
-use miden_crypto::{Felt, Word};use miden_crypto::PrimeCharacteristicRing;
+use miden_crypto::{Felt, PrimeCharacteristicRing, Word};
 use miden_formatting::{
     hex::ToHex,
     prettier::{Document, PrettyPrint, const_text, nl, text},
@@ -62,7 +62,7 @@ impl CallNode {
         let digest = {
             let callee_digest = mast_forest[callee].digest();
 
-            hasher::merge_in_domain(&[callee_digest, Word::default()], Self::CALL_DOMAIN)
+            hasher::merge_in_domain(&[callee_digest, Word::default()], Self::call_domain())
         };
 
         Ok(Self {
@@ -98,7 +98,7 @@ impl CallNode {
         let digest = {
             let callee_digest = mast_forest[callee].digest();
 
-            hasher::merge_in_domain(&[callee_digest, Word::default()], Self::SYSCALL_DOMAIN)
+            hasher::merge_in_domain(&[callee_digest, Word::default()], Self::syscall_domain())
         };
 
         Ok(Self {

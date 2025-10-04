@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, vec::Vec};
 use core::fmt;
 
-use miden_crypto::{Felt, Word};use miden_crypto::PrimeCharacteristicRing;
+use miden_crypto::{Felt, PrimeCharacteristicRing, Word};
 use miden_formatting::prettier::PrettyPrint;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -242,6 +242,6 @@ impl MastNodeExt for SplitNode {
     }
 
     fn domain(&self) -> Felt {
-        Self::DOMAIN
+        Self::domain()
     }
 }

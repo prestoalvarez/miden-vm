@@ -1,6 +1,8 @@
 use core::fmt;
 
-use crate::EventId;use miden_crypto::PrimeField64;
+use miden_crypto::PrimeField64;
+
+use crate::EventId;
 
 // SYSTEM EVENTS
 // ================================================================================================

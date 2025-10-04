@@ -8,7 +8,7 @@ pub use decorators::{AssemblyOp, DebugOptions, Decorator, DecoratorList};
 use opcode_constants::*;
 
 use crate::{
-    Felt,PrimeField64,
+    Felt, PrimeField64,
     utils::{ByteReader, ByteWriter, Deserializable, DeserializationError, Serializable},
 };
 

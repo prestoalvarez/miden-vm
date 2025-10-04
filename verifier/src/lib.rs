@@ -13,14 +13,12 @@ use miden_core::crypto::{
     hash::{Blake3_192, Blake3_256, Poseidon2, Rpo256, Rpx256},
     random::{RpoRandomCoin, RpxRandomCoin, WinterRandomCoin},
 };
-use p3_uni_stark::StarkConfig;
-use vm_core::RpoPermutation256;
-
-mod verify;
 // EXPORTS
 // ================================================================================================
 pub use miden_core::{Kernel, ProgramInfo, StackInputs, StackOutputs, Word};
+use p3_uni_stark::StarkConfig;
 use verify::verify as verify_proof;
+use vm_core::RpoPermutation256;
 pub use winter_verifier::{AcceptableOptions, VerifierError};
 pub mod math {
     pub use miden_core::{Felt, FieldElement, StarkField};

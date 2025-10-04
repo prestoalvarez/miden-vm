@@ -12,6 +12,7 @@ use core::{
 use serde::{Deserialize, Serialize};
 
 mod node;
+use miden_crypto::{AlgebraicSponge, PrimeField64};
 #[cfg(any(test, feature = "arbitrary"))]
 pub use node::arbitrary;
 pub use node::{
@@ -19,7 +20,6 @@ pub use node::{
     JoinNode, LoopNode, MastNode, MastNodeErrorContext, MastNodeExt, OP_BATCH_SIZE, OP_GROUP_SIZE,
     OpBatch, OperationOrDecorator, SplitNode,
 };
-use miden_crypto::AlgebraicSponge;use miden_crypto::PrimeField64;
 
 use crate::{
     AdviceMap, Decorator, DecoratorList, Felt, LexicographicWord, Operation, Word,
@@ -483,7 +483,7 @@ impl MastForest {
     ) -> Word {
         let mut digests: Vec<Word> = node_ids.into_iter().map(|&id| self[id].digest()).collect();
         digests.sort_unstable_by_key(|word| LexicographicWord::from(*word));
-        miden_crypto::hash::rpo::Rpo256::merge_many(&digests)
+        <miden_crypto::hash::rpo::Rpo256 as AlgebraicSponge>::merge_many(&digests)
     }
 
     /// Returns the number of nodes in this MAST forest.

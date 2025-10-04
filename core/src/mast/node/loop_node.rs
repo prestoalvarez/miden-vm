@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, vec::Vec};
 use core::fmt;
 
-use miden_crypto::{Felt, Word};use miden_crypto::PrimeCharacteristicRing;
+use miden_crypto::{Felt, PrimeCharacteristicRing, Word};
 use miden_formatting::prettier::PrettyPrint;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -36,9 +36,7 @@ pub struct LoopNode {
 /// Constants
 impl LoopNode {
     /// The domain of the loop node (used for control block hashing).
-    pub fn domain() -> Felt {
-        Felt::from_u64(OPCODE_LOOP as u64)
-    }
+    pub const DOMAIN: Felt = Felt::new(OPCODE_LOOP as u64);
 }
 
 /// Constructors

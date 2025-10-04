@@ -1,6 +1,6 @@
 use core::fmt::{Display, Formatter};
 
-use crate::{Felt, utils::hash_string_to_word, PrimeField64};
+use crate::{Felt, PrimeField64, utils::hash_string_to_word};
 
 /// A type-safe wrapper around a [`Felt`] that represents an event identifier.
 ///

@@ -242,7 +242,11 @@ fn test_move_sig_to_adv_stack() {
         let mut op_stack = vec![];
         let message = message.into_iter().map(|a| a.as_canonical_u64()).collect::<Vec<u64>>();
         op_stack.extend_from_slice(&message);
-        let pk_elements = public_key.as_elements().iter().map(|a| a.as_canonical_u64()).collect::<Vec<u64>>();
+        let pk_elements = public_key
+            .as_elements()
+            .iter()
+            .map(|a| a.as_canonical_u64())
+            .collect::<Vec<u64>>();
         op_stack.extend_from_slice(&pk_elements);
 
         op_stack
@@ -333,7 +337,9 @@ fn generate_test(
     let mut op_stack = vec![];
     let message = message.into_iter().map(|a| a.as_canonical_u64()).collect::<Vec<u64>>();
     op_stack.extend_from_slice(&message);
-    op_stack.extend_from_slice(&pk.as_elements().iter().map(|a| a.as_canonical_u64()).collect::<Vec<u64>>());
+    op_stack.extend_from_slice(
+        &pk.as_elements().iter().map(|a| a.as_canonical_u64()).collect::<Vec<u64>>(),
+    );
     let adv_stack = vec![];
     let store = MerkleStore::new();
 
@@ -403,7 +409,7 @@ fn generate_data_probabilistic_product_test(
     // compute hash of h and place it on the stack.
     let binding = Rpo256::hash_elements(&to_elements(h.clone()));
     let h_hash = binding.as_elements();
-    let h_hash_copy: Vec<u64> = h_hash.iter().map(|felt| (*felt).as_canonical_u64() ).collect();
+    let h_hash_copy: Vec<u64> = h_hash.iter().map(|felt| (*felt).as_canonical_u64()).collect();
     let operand_stack = vec![h_hash_copy[0], h_hash_copy[1], h_hash_copy[2], h_hash_copy[3]];
 
     (operand_stack, advice_stack)

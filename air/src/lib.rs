@@ -13,33 +13,32 @@ use miden_core::{
     ExtensionOf, ONE, ProgramInfo, StackInputs, StackOutputs, Word, ZERO,
     utils::{ByteReader, ByteWriter, Deserializable, Serializable},
 };
+pub use p3_air::{Air, AirBuilder, BaseAir};
+use p3_air::{AirBuilderWithPublicValues, PermutationAirBuilder};
+use p3_field::PrimeCharacteristicRing;
+use p3_matrix::Matrix;
 // use winter_air::{
-//     Air, AirContext, Assertion, EvaluationFrame, ProofOptions as WinterProofOptions, TraceInfo,
-//     TransitionConstraintDegree,
+//     Air, AirContext, Assertion, EvaluationFrame, ProofOptions as WinterProofOptions,
+// TraceInfo,     TransitionConstraintDegree,
 // };
 use winter_prover::{
     crypto::{RandomCoin, RandomCoinError},
     math::get_power_series,
     matrix::ColMatrix,
 };
-use p3_air::{AirBuilderWithPublicValues, PermutationAirBuilder};
-pub use p3_air::{Air, AirBuilder, BaseAir};
-use p3_field::PrimeCharacteristicRing;
-use p3_matrix::Matrix;
 
 mod constraints;
 //pub use constraints::stack;
 //use constraints::{chiplets, range};
 
 pub mod trace;
-pub use trace::ColMatrix;
-pub use trace::rows::RowIndex;
 use trace::*;
+pub use trace::{ColMatrix, rows::RowIndex};
 
 mod errors;
 mod options;
 mod proof;
-pub use proof::{Proof, Commitments, OpenedValues};
+pub use proof::{Commitments, OpenedValues, Proof};
 
 // mod air_builder;
 
@@ -341,7 +340,6 @@ impl PublicInputs {
         }
     }
 
-
     pub fn stack_inputs(&self) -> StackInputs {
         self.stack_inputs
     }
@@ -402,7 +400,6 @@ impl PublicInputs {
 //     }
 // }
 // */
-
 #[derive(Default)]
 pub struct ProcessorAir;
 
@@ -433,10 +430,8 @@ impl<AB: AirBuilderWithPublicValues + PermutationAirBuilder> Air<AB> for Process
         */
         let mut when_transition = builder.when_transition();
 
-        when_transition
-            
-            .assert_zero(clk_nxt - (clk_cur + AB::Expr::ONE));
- 
+        when_transition.assert_zero(clk_nxt - (clk_cur + AB::Expr::ONE));
+
         let change_v = next.range[1] - local.range[1];
         when_transition.assert_zero(
             (change_v.clone() - AB::Expr::ONE)
@@ -447,8 +442,7 @@ impl<AB: AirBuilderWithPublicValues + PermutationAirBuilder> Air<AB> for Process
                 * (change_v.clone() - AB::Expr::from_i128(243))
                 * (change_v.clone() - AB::Expr::from_i128(729))
                 * (change_v.clone() - AB::Expr::from_i128(2187)),
-        );    
-
+        );
     }
 }
 
@@ -496,4 +490,3 @@ impl<T> BorrowMut<MainTraceCols<T>> for [T] {
         &mut shorts[0]
     }
 }
-

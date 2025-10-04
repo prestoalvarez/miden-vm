@@ -3,8 +3,8 @@ use core::{
     fmt::Debug,
     ops::{Bound, Range},
 };
-use miden_crypto::{ExtensionField, PrimeCharacteristicRing, PrimeField64};
 
+use miden_crypto::{ExtensionField, PrimeCharacteristicRing, PrimeField64};
 // RE-EXPORTS
 // ================================================================================================
 pub use miden_crypto::{
