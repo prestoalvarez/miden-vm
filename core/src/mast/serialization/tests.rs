@@ -1,6 +1,6 @@
 use alloc::string::ToString;
 
-use miden_crypto::{Felt,  Word};
+use miden_crypto::{Felt, Word};
 
 use super::*;
 use crate::{

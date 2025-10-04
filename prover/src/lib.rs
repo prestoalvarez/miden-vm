@@ -31,6 +31,7 @@ use winter_prover::{
     matrix::ColMatrix,
 };
 mod gpu;
+mod prove;
 
 // EXPORTS
 // ================================================================================================
@@ -102,9 +103,7 @@ pub fn prove(
     advice_inputs: AdviceInputs,
     host: &mut impl SyncHost,
     options: ProvingOptions,
-) -> Result<(StackOutputs, ExecutionProof), ExecutionError>
-where
-{
+) -> Result<(StackOutputs, ExecutionProof), ExecutionError> {
     // execute the program to create an execution trace
     #[cfg(feature = "std")]
     let now = Instant::now();
@@ -157,12 +156,13 @@ where
             unimplemented!()
         },
         HashFunction::Poseidon2 => {
-            let prover = ExecutionProver::<Poseidon2, WinterRandomCoin<_>>::new(
-                options,
-                stack_inputs,
-                stack_outputs.clone(),
-            );
-            maybe_await!(prover.prove(trace))
+            unimplemented!()
+            // let prover = ExecutionProver::<Poseidon2, WinterRandomCoin<_>>::new(
+            //     options,
+            //     stack_inputs,
+            //     stack_outputs.clone(),
+            // );
+            // maybe_await!(prover.prove(trace))
         },
     }
     .map_err(ExecutionError::ProverError)?;

@@ -57,8 +57,7 @@ pub fn verify(
     stack_inputs: StackInputs,
     stack_outputs: StackOutputs,
     proof: ExecutionProof,
-) -> Result<u32, VerificationError> where
-{
+) -> Result<u32, VerificationError> {
     // get security level of the proof
     let security_level = proof.security_level();
     let program_hash = *program_info.program_hash();
@@ -172,7 +171,7 @@ pub fn verify(
             )
         },
     }
-    .map_err(|_source| VerificationError::ProgramVerificationError(program_hash))?;
+    .map_err(|source| VerificationError::ProgramVerificationError(program_hash, source))?;
 
     Ok(security_level)
 }
