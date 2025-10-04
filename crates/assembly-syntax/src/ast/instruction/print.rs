@@ -391,7 +391,7 @@ fn inst_with_pretty_felt_params(inst: &'static str, params: &[crate::Felt]) -> D
 #[cfg(test)]
 mod tests {
     use miden_core::crypto::hash::Rpo256;
-    use miden_debug_types::Span;
+    use miden_debug_types::Span;use miden_crypto::PrimeCharacteristicRing;
 
     use crate::{Felt, ast::*};
 

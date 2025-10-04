@@ -7,6 +7,8 @@ extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
+use core::borrow::{Borrow, BorrowMut};
+
 use alloc::{borrow::ToOwned, vec::Vec};
 
 use miden_core::{
@@ -38,7 +40,7 @@ pub use trace::{ColMatrix, rows::RowIndex};
 mod errors;
 mod options;
 mod proof;
-pub use proof::{Commitments, OpenedValues, Proof};
+// pub use proof::{Commitments, OpenedValues, Proof};
 
 // mod air_builder;
 
@@ -49,7 +51,7 @@ mod utils;
 
 pub use errors::ExecutionOptionsError;
 pub use miden_core::{
-    Felt, FieldElement, StarkField,
+    Felt, 
     utils::{DeserializationError, ToElements},
 };
 pub use options::{ExecutionOptions, ProvingOptions};

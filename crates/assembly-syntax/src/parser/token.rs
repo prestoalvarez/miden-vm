@@ -5,7 +5,7 @@ use miden_core::{
     Felt,
     utils::{ByteReader, ByteWriter, Deserializable, DeserializationError, Serializable},
 };
-use miden_crypto::PrimeField64;
+use miden_crypto::{PrimeCharacteristicRing, PrimeField64};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -257,7 +257,7 @@ impl IntValue {
             Self::U8(value) => *value as u64,
             Self::U16(value) => *value as u64,
             Self::U32(value) => *value as u64,
-            Self::Felt(value) => value.as_int(),
+            Self::Felt(value) => value.as_canonical_u64(),
         }
     }
 }
@@ -297,9 +297,9 @@ impl core::ops::Div<IntValue> for IntValue {
 impl PartialEq<Felt> for IntValue {
     fn eq(&self, other: &Felt) -> bool {
         match self {
-            Self::U8(lhs) => (*lhs as u64) == other.as_int(),
-            Self::U16(lhs) => (*lhs as u64) == other.as_int(),
-            Self::U32(lhs) => (*lhs as u64) == other.as_int(),
+            Self::U8(lhs) => (*lhs as u64) == other.as_canonical_u64(),
+            Self::U16(lhs) => (*lhs as u64) == other.as_canonical_u64(),
+            Self::U32(lhs) => (*lhs as u64) == other.as_canonical_u64(),
             Self::Felt(lhs) => lhs == other,
         }
     }
@@ -311,7 +311,7 @@ impl fmt::Display for IntValue {
             Self::U8(value) => write!(f, "{value}"),
             Self::U16(value) => write!(f, "{value}"),
             Self::U32(value) => write!(f, "{value:#04x}"),
-            Self::Felt(value) => write!(f, "{:#08x}", &value.as_int().to_be()),
+            Self::Felt(value) => write!(f, "{:#08x}", &value.as_canonical_u64().to_be()),
         }
     }
 }
@@ -322,7 +322,7 @@ impl crate::prettier::PrettyPrint for IntValue {
             Self::U8(v) => v.render(),
             Self::U16(v) => v.render(),
             Self::U32(v) => v.render(),
-            Self::Felt(v) => u64::from(*v).render(),
+            Self::Felt(v) => v.as_canonical_u64().render(),
         }
     }
 }
@@ -346,7 +346,7 @@ impl Ord for IntValue {
             (Self::U32(l), Self::U32(r)) => l.cmp(r),
             (Self::U32(_), _) => Ordering::Less,
             (Self::Felt(_), Self::U8(_) | Self::U16(_) | Self::U32(_)) => Ordering::Greater,
-            (Self::Felt(l), Self::Felt(r)) => l.as_int().cmp(&r.as_int()),
+            (Self::Felt(l), Self::Felt(r)) => l.as_canonical_u64().cmp(&r.as_canonical_u64()),
         }
     }
 }
@@ -358,7 +358,7 @@ impl core::hash::Hash for IntValue {
             Self::U8(value) => value.hash(state),
             Self::U16(value) => value.hash(state),
             Self::U32(value) => value.hash(state),
-            Self::Felt(value) => value.as_int().hash(state),
+            Self::Felt(value) => value.as_canonical_u64().hash(state),
         }
     }
 }
@@ -372,7 +372,7 @@ impl Serializable for IntValue {
 impl Deserializable for IntValue {
     fn read_from<R: ByteReader>(source: &mut R) -> Result<Self, DeserializationError> {
         let raw = source.read_u64()?;
-        if raw >= Felt::MODULUS {
+        if raw >= Felt::ORDER_U64 {
             Err(DeserializationError::InvalidValue(
                 "int value is greater than field modulus".into(),
             ))
