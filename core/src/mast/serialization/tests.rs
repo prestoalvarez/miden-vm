@@ -1,6 +1,6 @@
 use alloc::string::ToString;
 
-use miden_crypto::{Felt, ONE, Word};
+use miden_crypto::{Felt,  Word};
 
 use super::*;
 use crate::{
@@ -206,7 +206,7 @@ fn serialize_deserialize_all_nodes() {
             Operation::MovDn8,
             Operation::CSwap,
             Operation::CSwapW,
-            Operation::Push(Felt::from_u64(45)),
+            Operation::Push(Felt::new(45)),
             Operation::AdvPop,
             Operation::AdvPopW,
             Operation::MLoadW,

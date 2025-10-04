@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 
-use miden_crypto::WORD_SIZE;
+use miden_crypto::{PrimeCharacteristicRing, WORD_SIZE};
 use proptest::prelude::*;
 use winter_rand_utils::prng_array;
 
@@ -47,7 +47,7 @@ fn digest_from_seed(seed: [u8; 32]) -> Word {
     digest.iter_mut().enumerate().for_each(|(i, d)| {
         *d = <[u8; 8]>::try_from(&seed[i * 8..(i + 1) * 8])
             .map(u64::from_le_bytes)
-            .map(Felt::from_u64)
+            .map(Felt::new)
             .unwrap()
     });
     digest.into()

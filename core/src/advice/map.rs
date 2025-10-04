@@ -187,8 +187,6 @@ impl Deserializable for AdviceMap {
 
 #[cfg(test)]
 mod tests {
-    use miden_crypto::PrimeCharacteristicRing;
-
     use super::*;
 
     #[test]
