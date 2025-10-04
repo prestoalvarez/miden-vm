@@ -45,11 +45,7 @@ mod tests;
 // CONSTANTS
 // ================================================================================================
 
-//const HASH_CYCLE_LEN: Felt = Felt::from_u8(8);
-// TODO(Al)
-lazy_static! {
-    static ref HASH_CYCLE_LEN: Felt = Felt::from_u8(8);
-}
+const HASH_CYCLE_LEN: Felt = Felt::from_u8(8);
 
 // DECODER PROCESS EXTENSION
 // ================================================================================================

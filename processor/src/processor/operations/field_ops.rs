@@ -1,5 +1,5 @@
 use miden_air::trace::decoder::NUM_USER_OP_HELPERS;
-use miden_core::{Felt, FieldElement, ONE, ZERO};
+use miden_core::{Felt,  ONE, ZERO};
 
 use crate::{
     ErrorContext, ExecutionError,

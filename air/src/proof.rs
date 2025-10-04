@@ -4,6 +4,8 @@ use miden_core::{
     crypto::hash::{Blake3_192, Blake3_256, Hasher, Poseidon2, Rpo256, Rpx256},
     utils::{ByteReader, ByteWriter, Deserializable, DeserializationError, Serializable},
 };
+use p3_uni_stark::StarkGenericConfig;
+ use p3_commit::Pcs;
 use serde::{Deserialize, Serialize};
 
 //use winter_air::proof::Proof;
@@ -192,15 +194,51 @@ impl Deserializable for ExecutionProof {
 // TESTING UTILS
 // ================================================================================================
 
-#[cfg(any(test, feature = "testing"))]
-impl ExecutionProof {
-    /// Creates a dummy `ExecutionProof` for testing purposes only.
-    ///
-    /// Uses a dummy `Proof` and the default `HashFunction`.
-    pub fn new_dummy() -> Self {
-        ExecutionProof {
-            proof: Proof::new_dummy(),
-            hash_fn: HashFunction::Blake3_192,
-        }
-    }
+// #[cfg(any(test, feature = "testing"))]
+// impl ExecutionProof {
+//     /// Creates a dummy `ExecutionProof` for testing purposes only.
+//     ///
+//     /// Uses a dummy `Proof` and the default `HashFunction`.
+//     pub fn new_dummy() -> Self {
+//         ExecutionProof {
+//             proof: Proof::new_dummy(),
+//             hash_fn: HashFunction::Blake3_192,
+//         }
+//     }
+// }
+
+
+
+type Com<SC> = <<SC as StarkGenericConfig>::Pcs as Pcs<
+    <SC as StarkGenericConfig>::Challenge,
+    <SC as StarkGenericConfig>::Challenger,
+>>::Commitment;
+type PcsProof<SC> = <<SC as StarkGenericConfig>::Pcs as Pcs<
+    <SC as StarkGenericConfig>::Challenge,
+    <SC as StarkGenericConfig>::Challenger,
+>>::Proof;
+
+#[derive(Serialize, Deserialize)]
+#[serde(bound = "")]
+pub struct Proof<SC: StarkGenericConfig> {
+    pub commitments: Commitments<Com<SC>>,
+    pub opened_values: OpenedValues<SC::Challenge>,
+    pub opening_proof: PcsProof<SC>,
+    pub degree_bits: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Commitments<Com> {
+    pub trace: Com,
+    pub aux_trace: Com,
+    pub quotient_chunks: Com,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct OpenedValues<Challenge> {
+    pub trace_local: Vec<Challenge>,
+    pub trace_next: Vec<Challenge>,
+    pub aux_trace_local: Vec<Challenge>,
+    pub aux_trace_next: Vec<Challenge>,
+    pub quotient_chunks: Vec<Vec<Challenge>>,
 }

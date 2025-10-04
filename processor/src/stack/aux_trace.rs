@@ -1,9 +1,9 @@
 use alloc::vec::Vec;
 
 use miden_air::{RowIndex, trace::main_trace::MainTrace};
-use miden_core::OPCODE_DYNCALL;
+use miden_core::{ExtensionField, OPCODE_DYNCALL};
 
-use super::{Felt, FieldElement};
+use super::{Felt, };
 use crate::{debug::BusDebugger, trace::AuxColumnBuilder};
 
 // AUXILIARY TRACE BUILDER
@@ -106,7 +106,7 @@ impl OverflowTableRow {
 impl OverflowTableRow {
     /// Reduces this row to a single field element in the field specified by E. This requires
     /// at least 4 alpha values.
-    pub fn to_value<E: FieldElement<BaseField = Felt>>(&self, alphas: &[E]) -> E {
+    pub fn to_value<E: ExtensionField<Felt>>(&self, alphas: &[E]) -> E {
         alphas[0]
             + alphas[1].mul_base(self.clk)
             + alphas[2].mul_base(self.val)

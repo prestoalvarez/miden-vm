@@ -13,7 +13,7 @@ use miden_air::{
         main_trace::MainTrace,
     },
 };
-use miden_core::{Felt, FieldElement, ONE, ZERO};
+use miden_core::{ExtensionField, Felt, ONE, ZERO};
 
 use crate::{
     chiplets::aux_trace::build_value,
@@ -23,17 +23,15 @@ use crate::{
 // CONSTANTS
 // ================================================================================================
 
-// TODO(Al)
-lazy_static! {
-    static ref FOUR: Felt = Felt::from_u8(4);
-}
-//const FOUR: Felt = Felt::from_u8(4);
+
+
+const FOUR: Felt = Felt::from_u8(4);
 
 // REQUESTS
 // ================================================================================================
 
 /// Builds ACE chiplet read requests as part of the `READ` section made to the memory chiplet.
-pub fn build_ace_memory_read_word_request<E: FieldElement<BaseField = Felt>>(
+pub fn build_ace_memory_read_word_request<E: ExtensionField<Felt>>(
     main_trace: &MainTrace,
     alphas: &[E],
     row: RowIndex,
@@ -68,7 +66,7 @@ pub fn build_ace_memory_read_word_request<E: FieldElement<BaseField = Felt>>(
 }
 
 /// Builds ACE chiplet read requests as part of the `EVAL` section made to the memory chiplet.
-pub fn build_ace_memory_read_element_request<E: FieldElement<BaseField = Felt>>(
+pub fn build_ace_memory_read_element_request<E: ExtensionField<Felt>>(
     main_trace: &MainTrace,
     alphas: &[E],
     row: RowIndex,

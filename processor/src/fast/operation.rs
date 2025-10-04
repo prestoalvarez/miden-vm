@@ -1,5 +1,5 @@
 use miden_air::{
-    Felt, FieldElement, RowIndex,
+    Felt,  RowIndex,
     trace::{chiplets::hasher::HasherState, decoder::NUM_USER_OP_HELPERS},
 };
 use miden_core::{

@@ -4,10 +4,10 @@ use miden_air::{
     RowIndex,
     trace::stack::{H0_COL_IDX, NUM_STACK_HELPER_COLS},
 };
-use miden_core::{FieldElement, stack::MIN_STACK_DEPTH};
+use miden_core::{ stack::MIN_STACK_DEPTH,  utils::serial_batch_inversion};
 
 use super::{super::utils::get_trace_len, Felt, MAX_TOP_IDX, ONE, STACK_TRACE_WIDTH, ZERO};
-use crate::utils::math::batch_inversion;
+
 
 // STACK TRACE
 // ================================================================================================

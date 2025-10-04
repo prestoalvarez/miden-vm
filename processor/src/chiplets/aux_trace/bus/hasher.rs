@@ -14,8 +14,7 @@ use miden_air::{
     },
 };
 use miden_core::{
-    Felt, FieldElement, ONE, OPCODE_CALL, OPCODE_JOIN, OPCODE_LOOP, OPCODE_SPLIT, ZERO,
-    utils::range,
+    utils::range, ExtensionField, Felt, ONE, OPCODE_CALL, OPCODE_JOIN, OPCODE_LOOP, OPCODE_SPLIT, ZERO
 };
 
 use super::get_op_label;

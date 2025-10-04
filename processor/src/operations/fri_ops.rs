@@ -1,24 +1,23 @@
-use miden_core::{ExtensionOf, FieldElement, ONE, QuadFelt, StarkField, ZERO};
+use miden_core::{ ONE, QuadFelt,  ZERO};
 
 use super::{ExecutionError, Felt, Operation, Process};
 
-lazy_static! {
 
 // CONSTANTS
 // ================================================================================================
 
-static ref EIGHT: Felt = Felt::from_u8(8);
-static ref TWO_INV: Felt = ONE / Felt::TWO;
+const EIGHT: Felt = Felt::new(8);
+const TWO_INV: Felt = Felt::new(9223372034707292161);
 
-static ref DOMAIN_OFFSET: Felt = Felt::GENERATOR;
+const DOMAIN_OFFSET: Felt = Felt::GENERATOR;
 
 // Pre-computed powers of 1/tau, where tau is the generator of multiplicative subgroup of size 4
 // (i.e., tau is the 4th root of unity). Correctness of these constants is checked in the test at
 // the end of this module.
-static ref TAU_INV: Felt = Felt::from_u64(18446462594437873665); // tau^{-1}
-static ref TAU2_INV: Felt = Felt::from_u64(18446744069414584320); // tau^{-2}
-static ref TAU3_INV: Felt = Felt::from_u64(281474976710656); // tau^{-3}
-}
+const TAU_INV: Felt = Felt::new(18446462594437873665); // tau^{-1}
+const TAU2_INV: Felt = Felt::new(18446744069414584320); // tau^{-2}
+const TAU3_INV: Felt = Felt::new(281474976710656); // tau^{-3}
+
 
 // FRI OPERATIONS
 // ================================================================================================

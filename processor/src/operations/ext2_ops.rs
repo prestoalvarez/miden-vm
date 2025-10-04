@@ -1,13 +1,13 @@
-use vm_core::{PrimeCharacteristicRing, lazy_static};
+
 
 use super::{ExecutionError, Felt, Process};
 
 // EXTENSION FIELD OPERATIONS
 // ================================================================================================
 
-lazy_static! {
-    static ref SEVEN: Felt = Felt::from_u64(7);
-}
+
+    const SEVEN: Felt = Felt::new(7);
+
 
 impl Process {
     // ARITHMETIC OPERATIONS
@@ -56,8 +56,8 @@ mod tests {
 
         // multiply the top two values
         process.execute_op(Operation::Ext2Mul, program, &mut host).unwrap();
-        let a = QuadFelt::new(a0, a1);
-        let b = QuadFelt::new(b0, b1);
+        let a = QuadFelt::from([a0, a1]);
+        let b = QuadFelt::from([b0, b1]);
         let c = (b * a).to_base_elements();
         let expected = build_expected(&[b1, b0, c[1], c[0]]);
 

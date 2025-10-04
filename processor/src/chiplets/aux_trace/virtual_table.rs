@@ -2,9 +2,10 @@ use miden_air::{
     RowIndex,
     trace::{chiplets::hasher::DIGEST_RANGE, main_trace::MainTrace},
 };
+use miden_core::ExtensionField;
 
 use super::{
-    Felt, FieldElement, build_ace_memory_read_element_request, build_ace_memory_read_word_request,
+    Felt,  build_ace_memory_read_element_request, build_ace_memory_read_word_request,
 };
 use crate::{debug::BusDebugger, trace::AuxColumnBuilder};
 
@@ -32,7 +33,7 @@ pub struct ChipletsVTableColBuilder {}
 
 impl<E> AuxColumnBuilder<E> for ChipletsVTableColBuilder
 where
-    E: FieldElement<BaseField = Felt>,
+    E: ExtensionField< Felt>,
 {
     fn get_requests_at(
         &self,

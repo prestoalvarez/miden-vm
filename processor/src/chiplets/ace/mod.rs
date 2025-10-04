@@ -6,7 +6,7 @@ use miden_air::{
     RowIndex,
     trace::{chiplets::ace::ACE_CHIPLET_NUM_COLS, main_trace::MainTrace},
 };
-use miden_core::{Felt, FieldElement, QuadFelt, ZERO};
+use miden_core::{ExtensionField, Felt, QuadFelt, ZERO};
 
 use crate::{
     ContextId, ExecutionError,
@@ -147,7 +147,7 @@ impl AceHints {
         self.offset_chiplet_trace
     }
 
-    pub(crate) fn build_divisors<E: FieldElement<BaseField = Felt>>(
+    pub(crate) fn build_divisors<E: ExtensionField<Felt>>(
         &self,
         main_trace: &MainTrace,
         alphas: &[E],

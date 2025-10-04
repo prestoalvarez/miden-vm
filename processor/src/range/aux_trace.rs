@@ -7,7 +7,7 @@ use miden_air::{
         range::{M_COL_IDX, V_COL_IDX},
     },
 };
-use miden_core::ZERO;
+use miden_core::{ExtensionField, ZERO};
 
 use super::{Felt, NUM_RAND_ROWS, uninit_vector};
 
@@ -153,7 +153,7 @@ impl AuxTraceBuilder {
 /// Runs batch inversion on all range check lookup values and returns a map which maps each value
 /// to the divisor used for including it in the LogUp lookup. In other words, the map contains
 /// mappings of x to 1/(alpha + x).
-fn get_divisors<E: FieldElement<BaseField = Felt>>(
+fn get_divisors<E: ExtensionField<Felt>>(
     lookup_values: &[u16],
     alpha: E,
 ) -> BTreeMap<u16, E> {

@@ -1,4 +1,3 @@
-#[cfg(any(test, feature = "testing"))]
 use alloc::vec::Vec;
 use core::ops::{Deref, Range};
 
@@ -36,6 +35,104 @@ const DECODER_HASHER_RANGE: Range<usize> =
 
 // HELPER STRUCT AND METHODS
 // ================================================================================================
+#[derive(Debug)]
+pub struct ColMatrix<E> {
+    columns: Vec<Vec<E>>,
+}
+
+impl<E: Clone + Copy> ColMatrix<E> {
+    // CONSTRUCTOR
+    // --------------------------------------------------------------------------------------------
+    /// Returns a new [Matrix] instantiated with the data from the specified columns.
+    ///
+    /// # Panics
+    /// Panics if:
+    /// * The provided vector of columns is empty.
+    /// * Not all of the columns have the same number of elements.
+    /// * Number of rows is smaller than or equal to 1.
+    /// * Number of rows is not a power of two.
+    pub fn new(columns: Vec<Vec<E>>) -> Self {
+        assert!(!columns.is_empty(), "a matrix must contain at least one column");
+        let num_rows = columns[0].len();
+        assert!(num_rows > 1, "number of rows in a matrix must be greater than one");
+        assert!(num_rows.is_power_of_two(), "number of rows in a matrix must be a power of 2");
+        for column in columns.iter().skip(1) {
+            assert_eq!(column.len(), num_rows, "all matrix columns must have the same length");
+        }
+
+        Self { columns }
+    }
+    // PUBLIC ACCESSORS
+    // --------------------------------------------------------------------------------------------
+
+    /// Returns the number of columns in this matrix.
+    pub fn num_cols(&self) -> usize {
+        self.columns.len()
+    }
+
+    /// Returns the number of rows in this matrix.
+    pub fn num_rows(&self) -> usize {
+        self.columns[0].len()
+    }
+
+    /// Returns the element located at the specified column and row indexes in this matrix.
+    ///
+    /// # Panics
+    /// Panics if either `col_idx` or `row_idx` are out of bounds for this matrix.
+    pub fn get(&self, col_idx: usize, row_idx: usize) -> E {
+        self.columns[col_idx][row_idx].clone()
+    }
+
+    /// Returns a reference to the column at the specified index.
+    pub fn get_column(&self, col_idx: usize) -> &[E] {
+        &self.columns[col_idx]
+    }
+
+    /// Returns a reference to the column at the specified index.
+    pub fn get_column_mut(&mut self, col_idx: usize) -> &mut [E] {
+        &mut self.columns[col_idx]
+    }
+
+    /// Copies values of all columns at the specified row into the specified row slice.
+    ///
+    /// # Panics
+    /// Panics if `row_idx` is out of bounds for this matrix.
+    pub fn read_row_into(&self, row_idx: usize, row: &mut [E]) {
+        for (column, value) in self.columns.iter().zip(row.iter_mut()) {
+            *value = column[row_idx];
+        }
+    }
+
+    /// Updates a row in this matrix at the specified index to the provided data.
+    ///
+    /// # Panics
+    /// Panics if `row_idx` is out of bounds for this matrix.
+    pub fn update_row(&mut self, row_idx: usize, row: &[E]) {
+        for (column, &value) in self.columns.iter_mut().zip(row) {
+            column[row_idx] = value;
+        }
+    }
+
+    /// Merges a column to the end of the matrix provided its length matches the matrix.
+    ///
+    /// # Panics
+    /// Panics if the column has a different length to other columns in the matrix.
+    pub fn merge_column(&mut self, column: Vec<E>) {
+        if let Some(first_column) = self.columns.first() {
+            assert_eq!(first_column.len(), column.len());
+        }
+        self.columns.push(column);
+    }
+
+    /// Removes a column of the matrix given its index.
+    ///
+    /// # Panics
+    /// Panics if the column index is out of range.
+    pub fn remove_column(&mut self, index: usize) -> Vec<E> {
+        assert!(index < self.num_cols(), "column index out of range");
+        self.columns.remove(index)
+    }
+}
 
 #[derive(Debug)]
 pub struct MainTrace {
@@ -202,21 +299,21 @@ impl MainTrace {
 
     /// Constructs the i-th op code value from its individual bits.
     pub fn get_op_code(&self, i: RowIndex) -> Felt {
-        let col_b0 = self.columns.get_column(DECODER_TRACE_OFFSET + 1);
-        let col_b1 = self.columns.get_column(DECODER_TRACE_OFFSET + 2);
-        let col_b2 = self.columns.get_column(DECODER_TRACE_OFFSET + 3);
-        let col_b3 = self.columns.get_column(DECODER_TRACE_OFFSET + 4);
-        let col_b4 = self.columns.get_column(DECODER_TRACE_OFFSET + 5);
-        let col_b5 = self.columns.get_column(DECODER_TRACE_OFFSET + 6);
-        let col_b6 = self.columns.get_column(DECODER_TRACE_OFFSET + 7);
+        let col_b0:&[Felt] = self.columns.get_column(DECODER_TRACE_OFFSET + 1);
+        let col_b1:&[Felt] = self.columns.get_column(DECODER_TRACE_OFFSET + 2);
+        let col_b2:&[Felt] = self.columns.get_column(DECODER_TRACE_OFFSET + 3);
+        let col_b3:&[Felt] = self.columns.get_column(DECODER_TRACE_OFFSET + 4);
+        let col_b4:&[Felt] = self.columns.get_column(DECODER_TRACE_OFFSET + 5);
+        let col_b5:&[Felt] = self.columns.get_column(DECODER_TRACE_OFFSET + 6);
+        let col_b6:&[Felt] = self.columns.get_column(DECODER_TRACE_OFFSET + 7);
         let [b0, b1, b2, b3, b4, b5, b6] =
             [col_b0[i], col_b1[i], col_b2[i], col_b3[i], col_b4[i], col_b5[i], col_b6[i]];
-        b0 + b1 * Felt::from_u64(2)
-            + b2 * Felt::from_u64(4)
-            + b3 * Felt::from_u64(8)
-            + b4 * Felt::from_u64(16)
-            + b5 * Felt::from_u64(32)
-            + b6 * Felt::from_u64(64)
+        b0 + b1 * Felt::new(2)
+            + b2 * Felt::new(4)
+            + b3 * Felt::new(8)
+            + b4 * Felt::new(16)
+            + b5 * Felt::new(32)
+            + b6 * Felt::new(64)
     }
 
     /// Returns an iterator of [`RowIndex`] values over the row indices of this trace.
@@ -227,15 +324,15 @@ impl MainTrace {
     /// Returns a flag indicating whether the current operation induces a left shift of the operand
     /// stack.
     pub fn is_left_shift(&self, i: RowIndex) -> bool {
-        let b0 = self.columns.get(DECODER_TRACE_OFFSET + 1, i.into());
-        let b1 = self.columns.get(DECODER_TRACE_OFFSET + 2, i.into());
-        let b2 = self.columns.get(DECODER_TRACE_OFFSET + 3, i.into());
-        let b3 = self.columns.get(DECODER_TRACE_OFFSET + 4, i.into());
-        let b4 = self.columns.get(DECODER_TRACE_OFFSET + 5, i.into());
-        let b5 = self.columns.get(DECODER_TRACE_OFFSET + 6, i.into());
-        let b6 = self.columns.get(DECODER_TRACE_OFFSET + 7, i.into());
-        let e0 = self.columns.get(DECODER_TRACE_OFFSET + OP_BITS_EXTRA_COLS_OFFSET, i.into());
-        let h5 = self.columns.get(DECODER_TRACE_OFFSET + IS_LOOP_FLAG_COL_IDX, i.into());
+        let b0:Felt = self.columns.get(DECODER_TRACE_OFFSET + 1, i.into());
+        let b1:Felt = self.columns.get(DECODER_TRACE_OFFSET + 2, i.into());
+        let b2:Felt = self.columns.get(DECODER_TRACE_OFFSET + 3, i.into());
+        let b3:Felt = self.columns.get(DECODER_TRACE_OFFSET + 4, i.into());
+        let b4:Felt = self.columns.get(DECODER_TRACE_OFFSET + 5, i.into());
+        let b5:Felt = self.columns.get(DECODER_TRACE_OFFSET + 6, i.into());
+        let b6:Felt = self.columns.get(DECODER_TRACE_OFFSET + 7, i.into());
+        let e0:Felt = self.columns.get(DECODER_TRACE_OFFSET + OP_BITS_EXTRA_COLS_OFFSET, i.into());
+        let h5:Felt = self.columns.get(DECODER_TRACE_OFFSET + IS_LOOP_FLAG_COL_IDX, i.into());
 
         // group with left shift effect grouped by a common prefix
         ([b6, b5, b4] == [ZERO, ONE, ZERO])||
@@ -254,13 +351,13 @@ impl MainTrace {
     /// Returns a flag indicating whether the current operation induces a right shift of the operand
     /// stack.
     pub fn is_right_shift(&self, i: RowIndex) -> bool {
-        let b0 = self.columns.get(DECODER_TRACE_OFFSET + 1, i.into());
-        let b1 = self.columns.get(DECODER_TRACE_OFFSET + 2, i.into());
-        let b2 = self.columns.get(DECODER_TRACE_OFFSET + 3, i.into());
-        let b3 = self.columns.get(DECODER_TRACE_OFFSET + 4, i.into());
-        let b4 = self.columns.get(DECODER_TRACE_OFFSET + 5, i.into());
-        let b5 = self.columns.get(DECODER_TRACE_OFFSET + 6, i.into());
-        let b6 = self.columns.get(DECODER_TRACE_OFFSET + 7, i.into());
+        let b0:Felt = self.columns.get(DECODER_TRACE_OFFSET + 1, i.into());
+        let b1:Felt = self.columns.get(DECODER_TRACE_OFFSET + 2, i.into());
+        let b2:Felt = self.columns.get(DECODER_TRACE_OFFSET + 3, i.into());
+        let b3:Felt = self.columns.get(DECODER_TRACE_OFFSET + 4, i.into());
+        let b4:Felt = self.columns.get(DECODER_TRACE_OFFSET + 5, i.into());
+        let b5:Felt = self.columns.get(DECODER_TRACE_OFFSET + 6, i.into());
+        let b6:Felt = self.columns.get(DECODER_TRACE_OFFSET + 7, i.into());
 
         // group with right shift effect grouped by a common prefix
         [b6, b5, b4] == [ZERO, ONE, ONE]||
@@ -290,9 +387,9 @@ impl MainTrace {
 
     /// Returns a flag indicating whether the overflow stack is non-empty.
     pub fn is_non_empty_overflow(&self, i: RowIndex) -> bool {
-        let b0 = self.columns.get_column(STACK_TRACE_OFFSET + B0_COL_IDX)[i];
-        let h0 = self.columns.get_column(STACK_TRACE_OFFSET + H0_COL_IDX)[i];
-        ONE == (b0 - Felt::from_u64(16)) * h0
+        let b0:Felt = self.columns.get_column(STACK_TRACE_OFFSET + B0_COL_IDX)[i];
+        let h0:Felt = self.columns.get_column(STACK_TRACE_OFFSET + H0_COL_IDX)[i];
+        ONE == (b0 - Felt::new(16)) * h0
     }
 
     // CHIPLETS COLUMNS
@@ -546,7 +643,7 @@ impl MainTrace {
     /// Returns true when the i-th row of the `s_first` column in the kernel chiplet is one, i.e.,
     /// when this is the first row in a range of rows containing the same kernel proc hash.
     pub fn chiplet_kernel_is_first_hash_row(&self, i: RowIndex) -> bool {
-        self.columns.get_column(CHIPLETS_OFFSET + 5)[i] == ONE
+        ONE ==  self.columns.get_column(CHIPLETS_OFFSET + 5)[i] 
     }
 
     /// Returns the i-th row of the chiplet column containing the zeroth element of the kernel

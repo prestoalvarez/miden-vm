@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 
 use miden_core::{
-    Felt, FieldElement, QuadFelt, WORD_SIZE, Word, ZERO, crypto::hash::Rpo256,
+    Felt,  QuadFelt, WORD_SIZE, Word, ZERO, crypto::hash::Rpo256,
     sys_events::SystemEvent,
 };
 

@@ -1,4 +1,4 @@
-use miden_core::{Felt, FieldElement, Operation, QuadFelt};
+use miden_core::{Felt,  Operation, QuadFelt};
 
 use crate::{ExecutionError, Process, errors::ErrorContext};
 
@@ -245,7 +245,7 @@ impl Process {
         let alpha_0 = word[0];
         let alpha_1 = word[1];
 
-        Ok((QuadFelt::new(alpha_0, alpha_1), word[2], word[3]))
+        Ok((QuadFelt::from([alpha_0, alpha_1]), word[2], word[3]))
     }
 
     /// Reads the accumulator values.
@@ -424,7 +424,7 @@ mod tests {
         let coefficients: Vec<_> = stack_state
             .chunks(2)
             .take(4)
-            .map(|coef| QuadFelt::new(coef[1], coef[0]))
+            .map(|coef| QuadFelt::from([coef[1], coef[0]]))
             .collect();
 
         let acc_tmp =

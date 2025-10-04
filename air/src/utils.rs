@@ -1,47 +1,47 @@
 use alloc::vec::Vec;
+use p3_field::Field;
 use core::ops::Range;
 
 use miden_core::utils::range as create_range;
 
-use super::FieldElement;
 
 // BASIC CONSTRAINT OPERATORS
 // ================================================================================================
 
 /// Returns zero only when a == b.
-pub fn are_equal<E: FieldElement>(a: E, b: E) -> E {
+pub fn are_equal<E: Field>(a: E, b: E) -> E {
     a - b
 }
 
 #[inline(always)]
-pub fn is_binary<E: FieldElement>(v: E) -> E {
+pub fn is_binary<E: Field>(v: E) -> E {
     v.square() - v
 }
 
 #[inline(always)]
-pub fn binary_not<E: FieldElement>(v: E) -> E {
+pub fn binary_not<E: Field>(v: E) -> E {
     E::ONE - v
 }
 
 #[inline(always)]
-pub fn is_zero<E: FieldElement>(v: E) -> E {
+pub fn is_zero<E: Field>(v: E) -> E {
     v
 }
 
 // TRAIT TO SIMPLIFY CONSTRAINT AGGREGATION
 // ================================================================================================
 
-pub trait EvaluationResult<E: FieldElement> {
+pub trait EvaluationResult<E: Field> {
     fn agg_constraint(&mut self, index: usize, flag: E, value: E);
 }
 
-impl<E: FieldElement> EvaluationResult<E> for [E] {
+impl<E: Field> EvaluationResult<E> for [E] {
     fn agg_constraint(&mut self, index: usize, flag: E, value: E) {
         self[index] += flag * value;
     }
 }
 
-impl<E: FieldElement> EvaluationResult<E> for Vec<E> {
+impl<E: Field> EvaluationResult<E> for Vec<E> {
     fn agg_constraint(&mut self, index: usize, flag: E, value: E) {
         self[index] += flag * value;
     }

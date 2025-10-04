@@ -12,7 +12,8 @@ use core::borrow::{Borrow, BorrowMut};
 use alloc::{borrow::ToOwned, vec::Vec};
 
 use miden_core::{
-    ExtensionOf, ONE, ProgramInfo, StackInputs, StackOutputs, Word, ZERO,
+    // ExtensionOf, 
+    ONE, ProgramInfo, StackInputs, StackOutputs, Word, ZERO,
     utils::{ByteReader, ByteWriter, Deserializable, Serializable},
 };
 pub use p3_air::{Air, AirBuilder, BaseAir};
@@ -23,11 +24,11 @@ use p3_matrix::Matrix;
 //     Air, AirContext, Assertion, EvaluationFrame, ProofOptions as WinterProofOptions,
 // TraceInfo,     TransitionConstraintDegree,
 // };
-use winter_prover::{
-    crypto::{RandomCoin, RandomCoinError},
-    math::get_power_series,
-    matrix::ColMatrix,
-};
+// use winter_prover::{
+//     crypto::{RandomCoin, RandomCoinError},
+//     math::get_power_series,
+//     matrix::ColMatrix,
+// };
 
 mod constraints;
 //pub use constraints::stack;
@@ -418,8 +419,8 @@ impl<AB: AirBuilderWithPublicValues + PermutationAirBuilder> Air<AB> for Process
         let local: &MainTraceCols<AB::Var> = (*local).borrow();
         let next: &MainTraceCols<AB::Var> = (*next).borrow();
 
-        let clk_cur = local.clk;
-        let clk_nxt = next.clk;
+        let clk_cur = local.clk.clone();
+        let clk_nxt = next.clk.clone();
         /*
                let final_stack = local.stack;
 
@@ -434,7 +435,7 @@ impl<AB: AirBuilderWithPublicValues + PermutationAirBuilder> Air<AB> for Process
 
         when_transition.assert_zero(clk_nxt - (clk_cur + AB::Expr::ONE));
 
-        let change_v = next.range[1] - local.range[1];
+        let change_v = next.range[1].clone() - local.range[1].clone();
         when_transition.assert_zero(
             (change_v.clone() - AB::Expr::ONE)
                 * (change_v.clone() - AB::Expr::from_i128(3))

@@ -61,7 +61,7 @@ impl From<RowIndex> for usize {
 
 impl From<RowIndex> for Felt {
     fn from(step: RowIndex) -> Felt {
-        Felt::from_u32(step.0)
+        Felt::from(step.0)
     }
 }
 

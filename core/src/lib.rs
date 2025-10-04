@@ -90,8 +90,8 @@ pub mod crypto {
 
 pub mod mast;
 
-pub use miden_crypto::{BinomialExtensionField, Felt, PrimeField64};
-pub type QuadFelt = BinomialExtensionField<Felt, 5>;
+pub use miden_crypto::{BinomialExtensionField, Felt, PrimeField64, ExtensionField};
+pub type QuadFelt = BinomialExtensionField<Felt, 2>;
 
 pub mod prettier {
     pub use miden_formatting::{prettier::*, pretty_via_display, pretty_via_to_string};
