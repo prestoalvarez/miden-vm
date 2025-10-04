@@ -23,7 +23,6 @@ pub use node::{
 
 use crate::{
     AdviceMap, Decorator, DecoratorList, Felt, LexicographicWord, Operation, Word,
-    crypto::hash::Hasher,
     utils::{ByteWriter, DeserializationError, Serializable, hash_string_to_word},
 };
 

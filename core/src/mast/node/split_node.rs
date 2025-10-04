@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, vec::Vec};
 use core::fmt;
 
-use miden_crypto::{Felt, PrimeCharacteristicRing, Word};
+use miden_crypto::{Felt, Word};
 use miden_formatting::prettier::PrettyPrint;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -36,9 +36,7 @@ pub struct SplitNode {
 /// Constants
 impl SplitNode {
     /// The domain of the split node (used for control block hashing).
-    pub fn domain() -> Felt {
-        Felt::from_u64(OPCODE_SPLIT as u64)
-    }
+    pub const DOMAIN: Felt = Felt::new(OPCODE_SPLIT as u64);
 }
 
 /// Constructors
@@ -57,7 +55,7 @@ impl SplitNode {
             let if_branch_hash = mast_forest[branches[0]].digest();
             let else_branch_hash = mast_forest[branches[1]].digest();
 
-            hasher::merge_in_domain(&[if_branch_hash, else_branch_hash], Self::domain())
+            hasher::merge_in_domain(&[if_branch_hash, else_branch_hash], Self::DOMAIN)
         };
 
         Ok(Self {
@@ -242,6 +240,6 @@ impl MastNodeExt for SplitNode {
     }
 
     fn domain(&self) -> Felt {
-        Self::domain()
+        Self::DOMAIN
     }
 }

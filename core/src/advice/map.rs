@@ -163,7 +163,7 @@ where
         self.0.extend(iter.into_iter().map(|(key, value)| (key, value.into())))
     }
 }
-/*
+
 impl Serializable for AdviceMap {
     fn write_into<W: ByteWriter>(&self, target: &mut W) {
         target.write_usize(self.0.len());
@@ -203,4 +203,3 @@ mod tests {
         assert_eq!(map1, map2);
     }
 }
- */

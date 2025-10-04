@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, vec::Vec};
 use core::fmt;
 
-use miden_crypto::{Felt, PrimeCharacteristicRing, Word};
+use miden_crypto::{Felt, Word};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -32,9 +32,7 @@ pub struct JoinNode {
 /// Constants
 impl JoinNode {
     /// The domain of the join block (used for control block hashing).
-    pub fn join_domain() -> Felt {
-        Felt::from_u64(OPCODE_JOIN as u64)
-    }
+    pub const DOMAIN: Felt = Felt::new(OPCODE_JOIN as u64);
 }
 
 /// Constructors
@@ -54,7 +52,7 @@ impl JoinNode {
             let left_child_hash = mast_forest[children[0]].digest();
             let right_child_hash = mast_forest[children[1]].digest();
 
-            hasher::merge_in_domain(&[left_child_hash, right_child_hash], Self::join_domain())
+            hasher::merge_in_domain(&[left_child_hash, right_child_hash], Self::DOMAIN)
         };
 
         Ok(Self {

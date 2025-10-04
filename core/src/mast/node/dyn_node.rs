@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, vec::Vec};
 use core::fmt;
 
-use miden_crypto::{Felt, PrimeCharacteristicRing, Word};
+use miden_crypto::{Felt, Word};
 use miden_formatting::prettier::{Document, PrettyPrint, const_text, nl};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -29,14 +29,10 @@ pub struct DynNode {
 /// Constants
 impl DynNode {
     /// The domain of the Dyn block (used for control block hashing).
-    pub fn dyn_domain() -> Felt {
-        Felt::from_u64(OPCODE_DYN as u64)
-    }
+    pub const DYN_DOMAIN: Felt = Felt::new(OPCODE_DYN as u64);
 
     /// The domain of the Dyncall block (used for control block hashing).
-    pub fn dyncall_domain() -> Felt {
-        Felt::from_u64(OPCODE_DYNCALL as u64)
-    }
+    pub const DYNCALL_DOMAIN: Felt = Felt::new(OPCODE_DYNCALL as u64);
 }
 
 /// Public accessors
@@ -67,9 +63,9 @@ impl DynNode {
     /// Returns the domain of this dyn node.
     pub fn domain(&self) -> Felt {
         if self.is_dyncall() {
-            Self::dyncall_domain()
+            Self::DYNCALL_DOMAIN
         } else {
-            Self::dyn_domain()
+            Self::DYN_DOMAIN
         }
     }
 }

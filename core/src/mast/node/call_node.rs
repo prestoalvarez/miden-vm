@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, vec::Vec};
 use core::fmt;
 
-use miden_crypto::{Felt, PrimeCharacteristicRing, Word};
+use miden_crypto::{Felt, Word};
 use miden_formatting::{
     hex::ToHex,
     prettier::{Document, PrettyPrint, const_text, nl, text},
@@ -41,14 +41,10 @@ pub struct CallNode {
 /// Constants
 impl CallNode {
     /// The domain of the call block (used for control block hashing).
-    pub fn call_domain() -> Felt {
-        Felt::from_u64(OPCODE_CALL as u64)
-    }
+    pub const CALL_DOMAIN: Felt = Felt::new(OPCODE_CALL as u64);
 
     /// The domain of the syscall block (used for control block hashing).
-    pub fn syscall_domain() -> Felt {
-        Felt::from_u64(OPCODE_SYSCALL as u64)
-    }
+    pub const SYSCALL_DOMAIN: Felt = Felt::new(OPCODE_SYSCALL as u64);
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -62,7 +58,7 @@ impl CallNode {
         let digest = {
             let callee_digest = mast_forest[callee].digest();
 
-            hasher::merge_in_domain(&[callee_digest, Word::default()], Self::call_domain())
+            hasher::merge_in_domain(&[callee_digest, Word::default()], Self::CALL_DOMAIN)
         };
 
         Ok(Self {
@@ -98,7 +94,7 @@ impl CallNode {
         let digest = {
             let callee_digest = mast_forest[callee].digest();
 
-            hasher::merge_in_domain(&[callee_digest, Word::default()], Self::syscall_domain())
+            hasher::merge_in_domain(&[callee_digest, Word::default()], Self::SYSCALL_DOMAIN)
         };
 
         Ok(Self {
@@ -139,9 +135,9 @@ impl CallNode {
     /// Returns the domain of this call node.
     pub fn domain(&self) -> Felt {
         if self.is_syscall() {
-            Self::syscall_domain()
+            Self::SYSCALL_DOMAIN
         } else {
-            Self::call_domain()
+            Self::CALL_DOMAIN
         }
     }
 }
